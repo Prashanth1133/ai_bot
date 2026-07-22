@@ -1,0 +1,26 @@
+from enum import Enum
+
+
+class LifecycleState(Enum):
+
+    CREATED = "CREATED"
+
+    INITIALIZING = "INITIALIZING"
+
+    STARTING = "STARTING"
+
+    RUNNING = "RUNNING"
+
+    PAUSING = "PAUSING"
+
+    PAUSED = "PAUSED"
+
+    RESUMING = "RESUMING"
+
+    STOPPING = "STOPPING"
+
+    STOPPED = "STOPPED"
+
+    FAILED = "FAILED"
+
+    TERMINATED = "TERMINATED"

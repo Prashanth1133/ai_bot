@@ -1,0 +1,22 @@
+from enum import Enum
+
+
+class SystemState(Enum):
+
+    INITIALIZING = "INITIALIZING"
+
+    STARTING = "STARTING"
+
+    RUNNING = "RUNNING"
+
+    PAUSED = "PAUSED"
+
+    STOPPING = "STOPPING"
+
+    STOPPED = "STOPPED"
+
+    RECOVERING = "RECOVERING"
+
+    SHUTDOWN = "SHUTDOWN"
+
+    FAILED = "FAILED"

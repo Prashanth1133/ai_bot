@@ -1,0 +1,24 @@
+from enum import Enum
+
+
+class ExecutionState(Enum):
+
+    CREATED = "CREATED"
+
+    VALIDATED = "VALIDATED"
+
+    SUBMITTED = "SUBMITTED"
+
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
+
+    FILLED = "FILLED"
+
+    CANCELLED = "CANCELLED"
+
+    REJECTED = "REJECTED"
+
+    EXPIRED = "EXPIRED"
+
+    FAILED = "FAILED"

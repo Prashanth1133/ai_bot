@@ -1,0 +1,20 @@
+from enum import Enum
+
+
+class ServiceState(Enum):
+
+    CREATED = "CREATED"
+
+    INITIALIZING = "INITIALIZING"
+
+    STARTING = "STARTING"
+
+    RUNNING = "RUNNING"
+
+    STOPPING = "STOPPING"
+
+    STOPPED = "STOPPED"
+
+    FAILED = "FAILED"
+
+    RESTARTING = "RESTARTING"

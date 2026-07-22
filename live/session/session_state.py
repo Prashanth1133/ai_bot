@@ -1,0 +1,18 @@
+from enum import Enum
+
+
+class SessionState(Enum):
+
+    CREATED = "CREATED"
+
+    CONNECTING = "CONNECTING"
+
+    CONNECTED = "CONNECTED"
+
+    DISCONNECTED = "DISCONNECTED"
+
+    RECONNECTING = "RECONNECTING"
+
+    CLOSED = "CLOSED"
+
+    FAILED = "FAILED"

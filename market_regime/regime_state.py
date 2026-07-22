@@ -1,0 +1,22 @@
+from enum import Enum
+
+
+class RegimeState(Enum):
+
+    STRONG_BULL = "STRONG_BULL"
+
+    BULL = "BULL"
+
+    RANGE = "RANGE"
+
+    BEAR = "BEAR"
+
+    STRONG_BEAR = "STRONG_BEAR"
+
+    VOLATILE = "VOLATILE"
+
+    ACCUMULATION = "ACCUMULATION"
+
+    DISTRIBUTION = "DISTRIBUTION"
+
+    UNKNOWN = "UNKNOWN"
