@@ -1,24 +1,83 @@
-import schedule
-import time
+import torch
 
-from ai.auto_retrainer import (
-    AutoRetrainer
-)
 
-trainer = (
-    AutoRetrainer()
-)
+class LearningRateScheduler:
 
-schedule.every().day.at(
-    "00:00"
-).do(
-    trainer.retrain
-)
+    def __init__(
 
-while True:
+        self,
+        optimizer,
+        patience=5,
+        factor=0.5,
+        minimum_lr=1e-7
 
-    schedule.run_pending()
+    ):
 
-    time.sleep(
-        1
-    )
+
+        self.optimizer = optimizer
+
+
+        self.scheduler = (
+
+            torch.optim
+
+            .lr_scheduler
+
+            .ReduceLROnPlateau(
+
+                optimizer,
+
+                mode="min",
+
+                factor=factor,
+
+                patience=patience,
+
+                min_lr=minimum_lr,
+
+                verbose=True
+
+            )
+
+        )
+
+
+    def step(
+
+        self,
+        validation_loss
+
+    ):
+
+
+        self.scheduler.step(
+
+            validation_loss
+
+        )
+
+
+    def get_lr(self):
+
+
+        for group in (
+
+            self.optimizer
+
+            .param_groups
+
+        ):
+
+            return group["lr"]
+
+
+    def print_lr(self):
+
+
+        print(
+
+            f"Current Learning Rate : "
+
+            f"{self.get_lr()}"
+
+        )

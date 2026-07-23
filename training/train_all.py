@@ -1,28 +1,61 @@
 import subprocess
 
-coins = [
 
-    "train_btc.py",
-    "train_eth.py",
-    "train_doge.py"
+COINS = [
+
+    "train_btc",
+
+    "train_eth",
+
+    "train_doge"
 
 ]
 
-for coin in coins:
+
+def train_all():
+
+    for coin in COINS:
+
+        print("\n")
+
+        print(
+
+            f"Starting : {coin}"
+
+        )
+
+        subprocess.run(
+
+            [
+
+                "python",
+
+                "-m",
+
+                f"training.{coin}"
+
+            ],
+
+            check=True
+
+        )
+
+        print(
+
+            f"Completed : {coin}"
+
+        )
+
+        print("\n")
+
 
     print(
 
-        f"Running {coin}"
+        "\nAll Training Completed."
 
     )
 
-    subprocess.run(
 
-        [
+if __name__ == "__main__":
 
-            "python",
-            f"training/{coin}"
-
-        ]
-
-    )
+    train_all()
