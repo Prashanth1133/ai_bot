@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 from data.feature_builder import FeatureBuilder
 from data.label_builder import LabelBuilder
@@ -121,5 +122,28 @@ class DatasetBuilder:
                 sl[-sequence_count:]
 
         }
+
+        X = np.nan_to_num(
+
+            X,
+
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0
+
+        )
+
+
+        for key in y:
+
+            y[key] = np.nan_to_num(
+
+                y[key],
+
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0
+
+            )
 
         return X, y

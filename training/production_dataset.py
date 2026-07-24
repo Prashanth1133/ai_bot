@@ -1,7 +1,7 @@
 import numpy as np
 
-from data.build_dataset import (
-    DatasetBuilder
+from training.load_dataset import (
+    load_dataset
 )
 
 from data.crypto_dataset import (
@@ -11,6 +11,115 @@ from data.crypto_dataset import (
 
 class ProductionDataset:
 
+
+    ##################################################
+
+    def has_nan(
+
+        self,
+        data
+
+    ):
+
+        return (
+
+            np.isnan(data).any()
+
+            or
+
+            np.isinf(data).any()
+
+        )
+
+
+    ##################################################
+
+    def validate(
+
+        self,
+        X,
+        y
+
+    ):
+
+
+        print("\n")
+        print("="*60)
+        print("VALIDATING DATASET")
+        print("="*60)
+
+
+        ######################################
+
+        if self.has_nan(X):
+
+            raise ValueError(
+
+                "NaN detected in X"
+
+            )
+
+
+        ######################################
+
+        for key in y.keys():
+
+            if self.has_nan(
+
+                y[key]
+
+            ):
+
+                raise ValueError(
+
+                    f"NaN detected in {key}"
+
+                )
+
+
+        ######################################
+
+        print(
+
+            "Samples :",len(X)
+
+        )
+
+        print(
+
+            "Sequence Length :",X.shape[1]
+
+        )
+
+        print(
+
+            "Features :",X.shape[2]
+
+        )
+
+
+        print("\nTargets\n")
+
+
+        for key in y.keys():
+
+            print(
+
+                key,
+                y[key].shape
+
+            )
+
+
+        print("\n")
+        print("="*60)
+        print("DATASET VALID")
+        print("="*60)
+        print("\n")
+
+
+    ##################################################
+
     def load(
 
         self,
@@ -18,37 +127,54 @@ class ProductionDataset:
 
     ):
 
-        # Production Dataset
 
-        if path.endswith(".npy"):
+        print(
 
-            data = np.load(
+            "\nLoading Dataset ..."
 
-                path,
+        )
 
-                allow_pickle=True
 
-            ).item()
+        ######################################
 
-            X = data["X"]
+        data = load_dataset(
 
-            y = data["y"]
+            path
 
-        # CSV Dataset
+        )
 
-        else:
 
-            X, y = (
+        ######################################
 
-                DatasetBuilder()
+        if isinstance(
 
-                .process(
+            data,
+            np.ndarray
 
-                    path
+        ) and data.dtype == object:
 
-                )
 
-            )
+            data = data.item()
+
+
+        ######################################
+
+        X = data["X"]
+
+        y = data["y"]
+
+
+        ######################################
+
+        self.validate(
+
+            X,
+            y
+
+        )
+
+
+        ######################################
 
         dataset = (
 
@@ -60,6 +186,7 @@ class ProductionDataset:
             )
 
         )
+
 
         return (
 

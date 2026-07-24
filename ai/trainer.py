@@ -1,13 +1,22 @@
 import os
+import math
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler
-from torch.cuda.amp import autocast
+
+try:
+    from torch.amp import GradScaler
+    from torch.amp import autocast
+
+except Exception:
+
+    from torch.cuda.amp import GradScaler
+    from torch.cuda.amp import autocast
 
 
 class Trainer:
+
 
     def __init__(
 
@@ -19,6 +28,9 @@ class Trainer:
         lr=1e-4
 
     ):
+
+
+        ##################################################
 
         self.device = torch.device(
 
@@ -32,6 +44,7 @@ class Trainer:
 
         )
 
+
         print("\n")
         print("="*60)
         print("Using Device :",self.device)
@@ -39,26 +52,22 @@ class Trainer:
         print("\n")
 
 
-        ################################################
+        ##################################################
 
         if torch.cuda.is_available():
 
             batch_size = 256
-
             workers = 4
-
             pin_memory = True
 
         else:
 
             batch_size = 64
-
             workers = 0
-
             pin_memory = False
 
 
-        ################################################
+        ##################################################
 
         self.model = model.to(
 
@@ -66,8 +75,11 @@ class Trainer:
 
         )
 
+
         self.save_path = save_path
 
+
+        ##################################################
 
         self.loader = DataLoader(
 
@@ -86,7 +98,7 @@ class Trainer:
         )
 
 
-        ################################################
+        ##################################################
 
         self.optimizer = torch.optim.AdamW(
 
@@ -94,19 +106,19 @@ class Trainer:
 
             lr=lr,
 
-            weight_decay=1e-4
+            weight_decay=1e-5
 
         )
 
 
-        ################################################
+        ##################################################
 
         self.ce = nn.CrossEntropyLoss()
 
         self.mse = nn.MSELoss()
 
 
-        ################################################
+        ##################################################
 
         self.scaler = GradScaler(
 
@@ -115,7 +127,27 @@ class Trainer:
         )
 
 
-    ####################################################
+    ########################################################
+
+    def has_nan(
+
+        self,
+        tensor
+
+    ):
+
+        return (
+
+            torch.isnan(tensor).any()
+
+            or
+
+            torch.isinf(tensor).any()
+
+        )
+
+
+    ########################################################
 
     def train(
 
@@ -130,7 +162,10 @@ class Trainer:
 
         for epoch in range(epochs):
 
-            total_loss = 0.0
+
+            total_loss = 0
+
+            batch_count = 0
 
 
             ################################################
@@ -147,6 +182,15 @@ class Trainer:
                 )
 
 
+                ################################################
+
+                if self.has_nan(x):
+
+                    continue
+
+
+                ################################################
+
                 for key in y:
 
                     y[key] = y[key].to(
@@ -156,6 +200,15 @@ class Trainer:
                         non_blocking=True
 
                     )
+
+
+                    if self.has_nan(
+
+                        y[key]
+
+                    ):
+
+                        continue
 
 
                 ################################################
@@ -171,6 +224,8 @@ class Trainer:
 
                 with autocast(
 
+                    device_type=self.device.type,
+
                     enabled=torch.cuda.is_available()
 
                 ):
@@ -183,10 +238,10 @@ class Trainer:
                     )
 
 
+                    ################################################
+
                     loss = 0
 
-
-                    ################################################
 
                     loss += self.ce(
 
@@ -214,8 +269,6 @@ class Trainer:
 
                     )
 
-
-                    ################################################
 
                     loss += self.mse(
 
@@ -251,6 +304,18 @@ class Trainer:
                         y["stop_loss"]
 
                     )
+
+
+                ################################################
+
+                if torch.isnan(loss):
+
+                    continue
+
+
+                if torch.isinf(loss):
+
+                    continue
 
 
                 ################################################
@@ -295,8 +360,40 @@ class Trainer:
 
                 total_loss += loss.item()
 
+                batch_count += 1
+
 
             ################################################
+
+
+            if batch_count == 0:
+
+                print(
+
+                    f"Epoch "
+
+                    f"{epoch+1}"
+
+                    f" Failed."
+
+                )
+
+                continue
+
+
+            ################################################
+
+
+            epoch_loss = (
+
+                total_loss
+
+                /
+
+                batch_count
+
+            )
+
 
             print(
 
@@ -304,14 +401,15 @@ class Trainer:
 
                 f"{epoch+1}/{epochs}"
 
-                f"  Loss = "
+                f"    Loss = "
 
-                f"{total_loss:.4f}"
+                f"{epoch_loss:.6f}"
 
             )
 
 
         ####################################################
+
 
         os.makedirs(
 
@@ -341,9 +439,12 @@ class Trainer:
         print("\n")
 
 
-
     ####################################################
 
-    def get_device(self):
+    def get_device(
+
+        self
+
+    ):
 
         return self.device
