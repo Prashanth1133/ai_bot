@@ -17,8 +17,7 @@ MODEL_PATH = (
 )
 
 
-EPOCHS = 500
-
+EPOCHS = 200
 
 def main():
 
