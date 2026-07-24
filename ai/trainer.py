@@ -1,9 +1,10 @@
 import os
-
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler
+from torch.cuda.amp import autocast
 
 
 class Trainer:
@@ -19,9 +20,54 @@ class Trainer:
 
     ):
 
-        self.model = model
+        self.device = torch.device(
+
+            "cuda"
+
+            if torch.cuda.is_available()
+
+            else
+
+            "cpu"
+
+        )
+
+        print("\n")
+        print("="*60)
+        print("Using Device :",self.device)
+        print("="*60)
+        print("\n")
+
+
+        ################################################
+
+        if torch.cuda.is_available():
+
+            batch_size = 256
+
+            workers = 4
+
+            pin_memory = True
+
+        else:
+
+            batch_size = 64
+
+            workers = 0
+
+            pin_memory = False
+
+
+        ################################################
+
+        self.model = model.to(
+
+            self.device
+
+        )
 
         self.save_path = save_path
+
 
         self.loader = DataLoader(
 
@@ -29,21 +75,47 @@ class Trainer:
 
             batch_size=batch_size,
 
-            shuffle=True
+            shuffle=True,
+
+            num_workers=workers,
+
+            pin_memory=pin_memory,
+
+            drop_last=False
 
         )
+
+
+        ################################################
 
         self.optimizer = torch.optim.AdamW(
 
             self.model.parameters(),
 
-            lr=lr
+            lr=lr,
+
+            weight_decay=1e-4
 
         )
+
+
+        ################################################
 
         self.ce = nn.CrossEntropyLoss()
 
         self.mse = nn.MSELoss()
+
+
+        ################################################
+
+        self.scaler = GradScaler(
+
+            enabled=torch.cuda.is_available()
+
+        )
+
+
+    ####################################################
 
     def train(
 
@@ -52,75 +124,194 @@ class Trainer:
 
     ):
 
+
         self.model.train()
+
 
         for epoch in range(epochs):
 
             total_loss = 0.0
 
-            for x, y in self.loader:
 
-                outputs = self.model(x)
+            ################################################
 
-                loss = 0
+            for x,y in self.loader:
 
-                loss += self.ce(
-                    outputs["direction"],
-                    y["direction"]
+
+                x = x.to(
+
+                    self.device,
+
+                    non_blocking=True
+
                 )
 
-                loss += self.ce(
-                    outputs["reversal"],
-                    y["reversal"]
+
+                for key in y:
+
+                    y[key] = y[key].to(
+
+                        self.device,
+
+                        non_blocking=True
+
+                    )
+
+
+                ################################################
+
+                self.optimizer.zero_grad(
+
+                    set_to_none=True
+
                 )
 
-                loss += self.ce(
-                    outputs["market_regime"],
-                    y["market_regime"]
+
+                ################################################
+
+                with autocast(
+
+                    enabled=torch.cuda.is_available()
+
+                ):
+
+
+                    outputs = self.model(
+
+                        x
+
+                    )
+
+
+                    loss = 0
+
+
+                    ################################################
+
+                    loss += self.ce(
+
+                        outputs["direction"],
+
+                        y["direction"]
+
+                    )
+
+
+                    loss += self.ce(
+
+                        outputs["reversal"],
+
+                        y["reversal"]
+
+                    )
+
+
+                    loss += self.ce(
+
+                        outputs["market_regime"],
+
+                        y["market_regime"]
+
+                    )
+
+
+                    ################################################
+
+                    loss += self.mse(
+
+                        outputs["confidence"].squeeze(),
+
+                        y["confidence"]
+
+                    )
+
+
+                    loss += self.mse(
+
+                        outputs["volatility"].squeeze(),
+
+                        y["volatility"]
+
+                    )
+
+
+                    loss += self.mse(
+
+                        outputs["take_profit"].squeeze(),
+
+                        y["take_profit"]
+
+                    )
+
+
+                    loss += self.mse(
+
+                        outputs["stop_loss"].squeeze(),
+
+                        y["stop_loss"]
+
+                    )
+
+
+                ################################################
+
+                self.scaler.scale(
+
+                    loss
+
+                ).backward()
+
+
+                ################################################
+
+                self.scaler.unscale_(
+
+                    self.optimizer
+
                 )
 
-                loss += self.mse(
-                    outputs["confidence"].squeeze(),
-                    y["confidence"]
-                )
-
-                loss += self.mse(
-                    outputs["volatility"].squeeze(),
-                    y["volatility"]
-                )
-
-                loss += self.mse(
-                    outputs["take_profit"].squeeze(),
-                    y["take_profit"]
-                )
-
-                loss += self.mse(
-                    outputs["stop_loss"].squeeze(),
-                    y["stop_loss"]
-                )
-
-                self.optimizer.zero_grad()
-
-                loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(
 
                     self.model.parameters(),
 
-                    1.0
+                    max_norm=1.0
 
                 )
 
-                self.optimizer.step()
+
+                ################################################
+
+                self.scaler.step(
+
+                    self.optimizer
+
+                )
+
+                self.scaler.update()
+
+
+                ################################################
 
                 total_loss += loss.item()
 
+
+            ################################################
+
             print(
 
-                f"Epoch {epoch + 1}/{epochs} "
-                f"Loss={total_loss:.4f}"
+                f"Epoch "
+
+                f"{epoch+1}/{epochs}"
+
+                f"  Loss = "
+
+                f"{total_loss:.4f}"
 
             )
+
+
+        ####################################################
 
         os.makedirs(
 
@@ -130,6 +321,7 @@ class Trainer:
 
         )
 
+
         torch.save(
 
             self.model.state_dict(),
@@ -138,8 +330,20 @@ class Trainer:
 
         )
 
-        print(
 
-            f"\nModel Saved: {self.save_path}"
+        ####################################################
 
-        )
+        print("\n")
+        print("="*60)
+        print("MODEL SAVED")
+        print(self.save_path)
+        print("="*60)
+        print("\n")
+
+
+
+    ####################################################
+
+    def get_device(self):
+
+        return self.device
