@@ -13,7 +13,7 @@ class Trainer:
         model,
         dataset,
         save_path="models/trading_transformer.pt",
-        batch_size=64,
+        batch_size=512,
         lr=1e-4
 
     ):
@@ -42,7 +42,7 @@ class Trainer:
 
         if torch.cuda.is_available():
 
-            batch_size = 128
+            batch_size = 512
             workers = 2
             pin_memory = True
 
