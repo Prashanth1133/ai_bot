@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import (
     CosineAnnealingLR
 )
 
-from torch.cuda.amp import (
+from torch.amp import (
     GradScaler,
     autocast,
 )
@@ -29,10 +29,14 @@ class Trainer:
 
     ):
 
-
         ################################################
 
         torch.backends.cudnn.benchmark = True
+
+        if torch.cuda.is_available():
+
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
 
         ################################################
@@ -63,7 +67,6 @@ class Trainer:
             persistent_workers = True
 
             prefetch_factor = 2
-
 
         else:
 
@@ -99,8 +102,22 @@ class Trainer:
 
 
         ################################################
+        #
+        # Tesla T4 performs better without compile
+        #
+        ################################################
 
-        if torch.cuda.is_available():
+        self.use_compile = False
+
+        if (
+
+            torch.cuda.is_available()
+
+            and
+
+            self.use_compile
+
+        ):
 
             try:
 
@@ -217,6 +234,8 @@ class Trainer:
 
             GradScaler(
 
+                "cuda",
+
                 enabled=torch.cuda.is_available()
 
             )
@@ -233,7 +252,7 @@ class Trainer:
 
         ################################################
 
-        self.best_loss = 999999999
+        self.best_loss = 99999999
 
         self.early_stop = early_stop
 
@@ -300,8 +319,6 @@ class Trainer:
     ):
 
 
-        ################################################
-
         self.model.train()
 
 
@@ -360,6 +377,8 @@ class Trainer:
                 ############################################
 
                 with autocast(
+
+                    "cuda",
 
                     enabled=torch.cuda.is_available()
 
@@ -485,7 +504,7 @@ class Trainer:
 
                     self.model.parameters(),
 
-                    max_norm=1.0
+                    1.0
 
                 )
 
@@ -497,7 +516,6 @@ class Trainer:
                     self.optimizer
 
                 )
-
 
                 self.scaler.update()
 
@@ -563,26 +581,10 @@ class Trainer:
 
                 print()
 
-                print(
-
-                    "="*60
-
-                )
-
-                print(
-
-                    "EARLY STOPPING"
-
-                )
-
-                print(
-
-                    "="*60
-
-                )
-
+                print("="*60)
+                print("EARLY STOPPING")
+                print("="*60)
                 print()
-
 
                 break
 
