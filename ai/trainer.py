@@ -1,21 +1,19 @@
+# ai/trainer.py
+
 import os
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from torch.optim.lr_scheduler import (
-    CosineAnnealingLR
-)
-
-from torch.cuda.amp import (
+from torch.amp import (
     GradScaler,
     autocast,
 )
 
 
 class Trainer:
-
 
     def __init__(
 
@@ -29,11 +27,9 @@ class Trainer:
 
     ):
 
-
         ################################################
 
         torch.backends.cudnn.benchmark = True
-
 
         ################################################
 
@@ -49,45 +45,33 @@ class Trainer:
 
         )
 
-
         ################################################
 
         if torch.cuda.is_available():
 
             batch_size = 512
-
-            workers = 4
-
+            workers = 2
             pin_memory = True
-
             persistent_workers = True
-
             prefetch_factor = 4
-
 
         else:
 
             batch_size = 64
-
             workers = 0
-
             pin_memory = False
-
             persistent_workers = False
-
             prefetch_factor = None
-
 
         ################################################
 
         print("\n")
-        print("="*60)
-        print("Using Device :",self.device)
-        print("Batch Size   :",batch_size)
-        print("Workers      :",workers)
-        print("="*60)
+        print("=" * 60)
+        print("Using Device :", self.device)
+        print("Batch Size   :", batch_size)
+        print("Workers      :", workers)
+        print("=" * 60)
         print("\n")
-
 
         ################################################
 
@@ -97,38 +81,17 @@ class Trainer:
 
         )
 
-
         ################################################
 
-        if torch.cuda.is_available():
+        print(
 
-            try:
+            "torch.compile() Disabled"
 
-                self.model = torch.compile(
-
-                    self.model
-
-                )
-
-                print(
-
-                    "torch.compile() Enabled"
-
-                )
-
-            except Exception:
-
-                print(
-
-                    "torch.compile() skipped."
-
-                )
-
+        )
 
         ################################################
 
         self.save_path = save_path
-
 
         ################################################
 
@@ -139,21 +102,11 @@ class Trainer:
                 dataset,
 
                 batch_size=batch_size,
-
                 shuffle=True,
-
                 num_workers=workers,
-
                 pin_memory=pin_memory,
-
-                persistent_workers=(
-                    persistent_workers
-                ),
-
-                prefetch_factor=(
-                    prefetch_factor
-                ),
-
+                persistent_workers=persistent_workers,
+                prefetch_factor=prefetch_factor,
                 drop_last=False,
 
             )
@@ -165,17 +118,12 @@ class Trainer:
                 dataset,
 
                 batch_size=batch_size,
-
                 shuffle=True,
-
                 num_workers=0,
-
                 pin_memory=False,
-
                 drop_last=False,
 
             )
-
 
         ################################################
 
@@ -186,13 +134,11 @@ class Trainer:
                 self.model.parameters(),
 
                 lr=lr,
-
                 weight_decay=1e-5,
 
             )
 
         )
-
 
         ################################################
 
@@ -203,13 +149,11 @@ class Trainer:
                 self.optimizer,
 
                 T_max=100,
-
                 eta_min=1e-6,
 
             )
 
         )
-
 
         ################################################
 
@@ -217,12 +161,13 @@ class Trainer:
 
             GradScaler(
 
+                "cuda",
+
                 enabled=torch.cuda.is_available()
 
             )
 
         )
-
 
         ################################################
 
@@ -230,18 +175,15 @@ class Trainer:
 
         self.mse = nn.MSELoss()
 
-
         ################################################
 
-        self.best_loss = 999999999
+        self.best_loss = 999999999.0
 
         self.early_stop = early_stop
 
         self.wait = 0
 
-
     ####################################################
-
 
     def save_best_model(
 
@@ -250,14 +192,11 @@ class Trainer:
 
     ):
 
-
         if loss < self.best_loss:
-
 
             self.best_loss = loss
 
             self.wait = 0
-
 
             os.makedirs(
 
@@ -267,7 +206,6 @@ class Trainer:
 
             )
 
-
             torch.save(
 
                 self.model.state_dict(),
@@ -276,21 +214,17 @@ class Trainer:
 
             )
 
-
             print(
 
                 "\nBest Model Saved."
 
             )
 
-
         else:
 
             self.wait += 1
 
-
     ####################################################
-
 
     def train(
 
@@ -299,26 +233,21 @@ class Trainer:
 
     ):
 
-
         ################################################
 
         self.model.train()
-
 
         ################################################
 
         for epoch in range(epochs):
 
-
             total_loss = 0.0
 
             batch_count = 0
 
-
             ################################################
 
-            for x,y in self.loader:
-
+            for x, y in self.loader:
 
                 ############################################
 
@@ -329,7 +258,6 @@ class Trainer:
                     non_blocking=True
 
                 )
-
 
                 ############################################
 
@@ -347,7 +275,6 @@ class Trainer:
 
                     )
 
-
                 ############################################
 
                 self.optimizer.zero_grad(
@@ -356,15 +283,15 @@ class Trainer:
 
                 )
 
-
                 ############################################
 
                 with autocast(
 
+                    device_type="cuda",
+
                     enabled=torch.cuda.is_available()
 
                 ):
-
 
                     outputs = (
 
@@ -376,90 +303,86 @@ class Trainer:
 
                     )
 
+                    ########################################
 
-                    ####################################
-
-                    loss = 0
-
-
-                    loss += self.ce(
+                    direction_loss = self.ce(
 
                         outputs["direction"],
-
                         y["direction"]
 
                     )
 
+                    ########################################
 
-                    loss += self.ce(
+                    reversal_loss = self.ce(
 
                         outputs["reversal"],
-
                         y["reversal"]
 
                     )
 
+                    ########################################
 
-                    loss += self.ce(
+                    market_loss = self.ce(
 
                         outputs["market_regime"],
-
                         y["market_regime"]
 
                     )
 
+                    ########################################
 
-                    loss += self.mse(
+                    confidence_loss = self.mse(
 
-                        outputs[
-                            "confidence"
-                        ].squeeze(),
+                        outputs["confidence"].squeeze(),
 
-                        y[
-                            "confidence"
-                        ]
+                        y["confidence"]
 
                     )
 
+                    ########################################
 
-                    loss += self.mse(
+                    volatility_loss = self.mse(
 
-                        outputs[
-                            "volatility"
-                        ].squeeze(),
+                        outputs["volatility"].squeeze(),
 
-                        y[
-                            "volatility"
-                        ]
+                        y["volatility"]
 
                     )
 
+                    ########################################
 
-                    loss += self.mse(
+                    tp_loss = self.mse(
 
-                        outputs[
-                            "take_profit"
-                        ].squeeze(),
+                        outputs["take_profit"].squeeze(),
 
-                        y[
-                            "take_profit"
-                        ]
+                        y["take_profit"]
 
                     )
 
+                    ########################################
 
-                    loss += self.mse(
+                    sl_loss = self.mse(
 
-                        outputs[
-                            "stop_loss"
-                        ].squeeze(),
+                        outputs["stop_loss"].squeeze(),
 
-                        y[
-                            "stop_loss"
-                        ]
+                        y["stop_loss"]
 
                     )
 
+                    ########################################
+
+                    loss = (
+
+                        direction_loss
+                        + reversal_loss
+                        + market_loss
+                        + confidence_loss
+                        + volatility_loss
+                        + tp_loss
+                        + sl_loss
+
+                    )
 
                 ############################################
 
@@ -469,7 +392,6 @@ class Trainer:
 
                 ).backward()
 
-
                 ############################################
 
                 self.scaler.unscale_(
@@ -477,7 +399,6 @@ class Trainer:
                     self.optimizer
 
                 )
-
 
                 ############################################
 
@@ -489,7 +410,6 @@ class Trainer:
 
                 )
 
-
                 ############################################
 
                 self.scaler.step(
@@ -498,9 +418,9 @@ class Trainer:
 
                 )
 
+                ############################################
 
                 self.scaler.update()
-
 
                 ############################################
 
@@ -510,9 +430,7 @@ class Trainer:
 
                 )
 
-
                 batch_count += 1
-
 
             ################################################
 
@@ -526,11 +444,9 @@ class Trainer:
 
             )
 
-
             ################################################
 
             self.scheduler.step()
-
 
             ################################################
 
@@ -546,7 +462,6 @@ class Trainer:
 
             )
 
-
             ################################################
 
             self.save_best_model(
@@ -555,50 +470,28 @@ class Trainer:
 
             )
 
-
             ################################################
 
             if self.wait >= self.early_stop:
 
-
-                print()
-
-                print(
-
-                    "="*60
-
-                )
-
-                print(
-
-                    "EARLY STOPPING"
-
-                )
-
-                print(
-
-                    "="*60
-
-                )
-
-                print()
-
+                print("\n")
+                print("=" * 60)
+                print("EARLY STOPPING")
+                print("=" * 60)
+                print("\n")
 
                 break
-
 
         ################################################
 
         print("\n")
-        print("="*60)
+        print("=" * 60)
         print("TRAINING COMPLETED")
-        print("BEST LOSS :",self.best_loss)
-        print("="*60)
+        print("BEST LOSS :", self.best_loss)
+        print("=" * 60)
         print("\n")
 
-
     ####################################################
-
 
     def get_device(
 
