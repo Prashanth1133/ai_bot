@@ -12,7 +12,7 @@ from data.crypto_dataset import (
 class ProductionDataset:
 
 
-    ##################################################
+    #####################################################
 
     def has_nan(
 
@@ -32,7 +32,7 @@ class ProductionDataset:
         )
 
 
-    ##################################################
+    #####################################################
 
     def validate(
 
@@ -42,25 +42,18 @@ class ProductionDataset:
 
     ):
 
-
         print("\n")
-        print("="*60)
+        print("=" * 60)
         print("VALIDATING DATASET")
-        print("="*60)
-
-
-        ######################################
+        print("=" * 60)
 
         if self.has_nan(X):
 
             raise ValueError(
 
-                "NaN detected in X"
+                "NaN Found in X"
 
             )
-
-
-        ######################################
 
         for key in y.keys():
 
@@ -72,53 +65,48 @@ class ProductionDataset:
 
                 raise ValueError(
 
-                    f"NaN detected in {key}"
+                    f"NaN Found in {key}"
 
                 )
 
-
-        ######################################
-
         print(
 
-            "Samples :",len(X)
+            f"Samples : {len(X)}"
 
         )
 
         print(
 
-            "Sequence Length :",X.shape[1]
+            f"Sequence Length : {X.shape[1]}"
 
         )
 
         print(
 
-            "Features :",X.shape[2]
+            f"Features : {X.shape[2]}"
 
         )
-
 
         print("\nTargets\n")
-
 
         for key in y.keys():
 
             print(
 
                 key,
+
                 y[key].shape
 
             )
 
-
         print("\n")
-        print("="*60)
+        print("=" * 60)
         print("DATASET VALID")
-        print("="*60)
+        print("=" * 60)
         print("\n")
 
 
-    ##################################################
+    #####################################################
 
     def load(
 
@@ -127,66 +115,42 @@ class ProductionDataset:
 
     ):
 
-
         print(
-
             "\nLoading Dataset ..."
-
         )
-
-
-        ######################################
 
         data = load_dataset(
-
             path
-
         )
 
+        if (
 
-        ######################################
+            isinstance(
+                data,
+                np.ndarray
+            )
 
-        if isinstance(
+            and
 
-            data,
-            np.ndarray
+            data.dtype == object
 
-        ) and data.dtype == object:
-
+        ):
 
             data = data.item()
-
-
-        ######################################
 
         X = data["X"]
 
         y = data["y"]
 
-
-        ######################################
-
         self.validate(
-
             X,
             y
-
         )
 
-
-        ######################################
-
-        dataset = (
-
-            CryptoDataset(
-
-                X,
-                y
-
-            )
-
+        dataset = CryptoDataset(
+            X,
+            y
         )
-
 
         return (
 

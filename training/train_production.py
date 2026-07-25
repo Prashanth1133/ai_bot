@@ -17,24 +17,25 @@ MODEL_PATH = (
 )
 
 
-EPOCHS = 20
+#####################################################
+
+# FINAL PRODUCTION TRAINING
+
+EPOCHS = 200
+
+#####################################################
+
 
 def main():
 
     print("\n")
 
-    print("="*60)
+    print("=" * 60)
     print("CRYPTO VISION AI")
-    print("PRODUCTION V1 TRAINING")
-    print("="*60)
+    print("FINAL PRODUCTION TRAINING")
+    print("=" * 60)
 
-
-    trainer = (
-
-        ProductionTrain()
-
-    )
-
+    trainer = ProductionTrain()
 
     trainer.train(
 
@@ -46,12 +47,11 @@ def main():
 
     )
 
-
     print("\n")
 
-    print("="*60)
+    print("=" * 60)
     print("TRAINING COMPLETED")
-    print("="*60)
+    print("=" * 60)
 
     print(
 

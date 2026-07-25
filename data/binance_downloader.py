@@ -2,6 +2,8 @@ import os
 import time
 import pandas as pd
 
+from datetime import datetime
+
 from binance.client import Client
 
 
@@ -11,20 +13,24 @@ class BinanceDownloader:
 
         self.client = Client()
 
-    #################################################
+    #####################################################
 
     def download(
 
         self,
         symbol,
         interval,
-        limit=1000
+        start_str="1 year ago UTC"
 
     ):
 
+        print()
+
+        print("=" * 60)
+
         print(
 
-            f"\nDownloading "
+            f"Downloading "
 
             f"{symbol}"
 
@@ -34,13 +40,25 @@ class BinanceDownloader:
 
         )
 
+        print(
+
+            f"Start Date : "
+
+            f"{start_str}"
+
+        )
+
+        print()
+
         klines = (
 
-            self.client.get_klines(
+            self.client.get_historical_klines(
 
                 symbol=symbol,
+
                 interval=interval,
-                limit=limit
+
+                start_str=start_str,
 
             )
 
@@ -48,35 +66,75 @@ class BinanceDownloader:
 
         rows = []
 
+
         for k in klines:
 
             rows.append(
 
                 {
 
-                    "timestamp":k[0],
+                    "timestamp":
 
-                    "open":float(k[1]),
+                    pd.to_datetime(
 
-                    "high":float(k[2]),
+                        k[0],
 
-                    "low":float(k[3]),
+                        unit="ms"
 
-                    "close":float(k[4]),
+                    ),
 
-                    "volume":float(k[5])
+                    "open":
+
+                    float(k[1]),
+
+                    "high":
+
+                    float(k[2]),
+
+                    "low":
+
+                    float(k[3]),
+
+                    "close":
+
+                    float(k[4]),
+
+                    "volume":
+
+                    float(k[5]),
 
                 }
 
             )
 
-        return pd.DataFrame(
 
-            rows
+        dataframe = (
+
+            pd.DataFrame(
+
+                rows
+
+            )
 
         )
 
-    #################################################
+
+        print(
+
+            f"Downloaded : "
+
+            f"{len(dataframe)} "
+
+            f"candles"
+
+        )
+
+
+        return dataframe
+
+
+    #####################################################
+
 
     def save(
 
@@ -87,6 +145,7 @@ class BinanceDownloader:
 
     ):
 
+
         os.makedirs(
 
             "data/raw",
@@ -94,6 +153,7 @@ class BinanceDownloader:
             exist_ok=True
 
         )
+
 
         path = (
 
@@ -105,6 +165,7 @@ class BinanceDownloader:
 
         )
 
+
         dataframe.to_csv(
 
             path,
@@ -113,17 +174,63 @@ class BinanceDownloader:
 
         )
 
+
         print(
 
-            f"Saved : {path}"
+            f"Saved : "
+
+            f"{path}"
 
         )
+
+
+    #####################################################
+
+
+    def download_and_save(
+
+        self,
+        symbol,
+        interval,
+        start_str="1 year ago UTC"
+
+    ):
+
+
+        dataframe = (
+
+            self.download(
+
+                symbol=symbol,
+
+                interval=interval,
+
+                start_str=start_str
+
+            )
+
+        )
+
+
+        self.save(
+
+            symbol,
+
+            interval,
+
+            dataframe
+
+        )
+
+
+        return dataframe
 
 
 #########################################################
 
 
 if __name__ == "__main__":
+
 
     downloader = BinanceDownloader()
 
@@ -134,7 +241,7 @@ if __name__ == "__main__":
 
         "ETHUSDT",
 
-        "DOGEUSDT"
+        "DOGEUSDT",
 
     ]
 
@@ -152,32 +259,49 @@ if __name__ == "__main__":
     ]
 
 
+    #################################################
+
+    # OPTIONS
+    #
+    # 1 year ago UTC
+    # 2 years ago UTC
+    # 3 years ago UTC
+    #
+    #################################################
+
+    START_DATE = (
+
+        "1 year ago UTC"
+
+    )
+
+
     for symbol in symbols:
+
 
         for interval in intervals:
 
-            dataframe = (
 
-                downloader.download(
+            downloader.download_and_save(
 
-                    symbol=symbol,
+                symbol=symbol,
 
-                    interval=interval,
+                interval=interval,
 
-                    limit=1000
-
-                )
+                start_str=START_DATE,
 
             )
 
-            downloader.save(
-
-                symbol,
-
-                interval,
-
-                dataframe
-
-            )
 
             time.sleep(1)
+
+
+    print()
+
+    print("=" * 60)
+
+    print("ALL DOWNLOADS COMPLETED")
+
+    print("=" * 60)
+
+    print()

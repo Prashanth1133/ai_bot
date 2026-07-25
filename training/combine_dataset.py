@@ -10,15 +10,10 @@ class CombinedDatasetBuilder:
 
     def __init__(self):
 
-        self.builder = (
-
-            DatasetBuilder()
-
-        )
+        self.builder = DatasetBuilder()
 
 
-    #################################################
-
+    #####################################################
 
     def load(
 
@@ -27,19 +22,12 @@ class CombinedDatasetBuilder:
 
     ):
 
-        return (
-
-            self.builder.process(
-
-                csv_path
-
-            )
-
+        return self.builder.process(
+            csv_path
         )
 
 
-    #################################################
-
+    #####################################################
 
     def combine(
 
@@ -48,41 +36,31 @@ class CombinedDatasetBuilder:
 
     ):
 
-
         X_list = []
 
         y_dict = None
 
-
-        for X,y in datasets:
-
+        for X, y in datasets:
 
             X_list.append(
-
                 X
-
             )
-
 
             if y_dict is None:
 
                 y_dict = {
 
-                    key:[]
+                    key: []
 
                     for key in y.keys()
 
                 }
 
-
             for key in y.keys():
 
                 y_dict[key].append(
-
                     y[key]
-
                 )
-
 
         X = np.concatenate(
 
@@ -92,32 +70,20 @@ class CombinedDatasetBuilder:
 
         )
 
+        for key in y_dict.keys():
 
-        for key in y_dict:
+            y_dict[key] = np.concatenate(
 
-            y_dict[key] = (
+                y_dict[key],
 
-                np.concatenate(
-
-                    y_dict[key],
-
-                    axis=0
-
-                )
+                axis=0
 
             )
 
-
-        return (
-
-            X,
-            y_dict
-
-        )
+        return X, y_dict
 
 
-    #################################################
-
+    #####################################################
 
     def shuffle(
 
@@ -127,51 +93,26 @@ class CombinedDatasetBuilder:
 
     ):
 
-
-        indices = (
-
-            np.arange(
-
-                len(X)
-
-            )
-
+        indices = np.arange(
+            len(X)
         )
-
 
         np.random.shuffle(
-
             indices
-
         )
-
 
         X = X[indices]
 
-
         for key in y.keys():
 
-            y[key] = (
+            y[key] = y[key][
+                indices
+            ]
 
-                y[key][
-
-                    indices
-
-                ]
-
-            )
+        return X, y
 
 
-        return (
-
-            X,
-            y
-
-        )
-
-
-    #################################################
-
+    #####################################################
 
     def information(
 
@@ -181,27 +122,20 @@ class CombinedDatasetBuilder:
 
     ):
 
-
         print("\n")
-
-        print("="*50)
+        print("=" * 60)
 
         print(
-
-            "TOTAL DATASET :",
-
+            "TOTAL SAMPLES :",
             len(X)
-
         )
 
         print(
-
             "INPUT SHAPE :",
-
             X.shape
-
         )
 
+        print("\nTargets\n")
 
         for key in y.keys():
 
@@ -213,7 +147,5 @@ class CombinedDatasetBuilder:
 
             )
 
-
-        print("="*50)
-
+        print("=" * 60)
         print("\n")
