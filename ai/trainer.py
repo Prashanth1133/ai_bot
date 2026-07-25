@@ -1,5 +1,7 @@
-import os
+# ai/trainer.py
 
+import os
+import gc
 import torch
 import torch.nn as nn
 
@@ -77,7 +79,7 @@ class Trainer:
 
         if torch.cuda.is_available():
 
-            batch_size = 1024
+            batch_size = 512
 
             workers = 2
 
@@ -85,7 +87,7 @@ class Trainer:
 
             persistent_workers = True
 
-            prefetch_factor = 4
+            prefetch_factor = 2
 
         else:
 
@@ -169,6 +171,18 @@ class Trainer:
 
         self.mse = nn.MSELoss()
 
+        #################################################
+
+        self.use_amp = torch.cuda.is_available()
+
+        self.scaler = torch.amp.GradScaler(
+
+            "cuda",
+
+            enabled=self.use_amp
+
+        )
+
     #################################################
 
     def has_nan(
@@ -180,11 +194,19 @@ class Trainer:
 
         return (
 
-            torch.isnan(tensor).any()
+            torch.isnan(
+
+                tensor
+
+            ).any()
 
             or
 
-            torch.isinf(tensor).any()
+            torch.isinf(
+
+                tensor
+
+            ).any()
 
         )
 
@@ -213,13 +235,19 @@ class Trainer:
 
                 #################################################
 
-                x = x.to(
+                try:
 
-                    self.device,
+                    x = x.to(
 
-                    non_blocking=True
+                        self.device,
 
-                )
+                        non_blocking=True
+
+                    )
+
+                except Exception:
+
+                    continue
 
                 #################################################
 
@@ -233,13 +261,21 @@ class Trainer:
 
                 for key in y:
 
-                    y[key] = y[key].to(
+                    try:
 
-                        self.device,
+                        y[key] = y[key].to(
 
-                        non_blocking=True
+                            self.device,
 
-                    )
+                            non_blocking=True
+
+                        )
+
+                    except Exception:
+
+                        skip_batch = True
+
+                        break
 
                     if self.has_nan(
 
@@ -267,91 +303,121 @@ class Trainer:
 
                 try:
 
-                    outputs = self.model(
+                    with torch.amp.autocast(
 
-                        x
+                        device_type="cuda",
+
+                        enabled=self.use_amp
+
+                    ):
+
+                        outputs = self.model(
+
+                            x
+
+                        )
+
+                        #################################
+
+                        loss = 0
+
+                        #################################
+
+                        loss += self.ce(
+
+                            outputs["direction"],
+
+                            y["direction"]
+
+                        )
+
+                        #################################
+
+                        loss += self.ce(
+
+                            outputs["reversal"],
+
+                            y["reversal"]
+
+                        )
+
+                        #################################
+
+                        loss += self.ce(
+
+                            outputs["market_regime"],
+
+                            y["market_regime"]
+
+                        )
+
+                        #################################
+
+                        loss += self.mse(
+
+                            outputs["confidence"].squeeze(),
+
+                            y["confidence"]
+
+                        )
+
+                        #################################
+
+                        loss += self.mse(
+
+                            outputs["volatility"].squeeze(),
+
+                            y["volatility"]
+
+                        )
+
+                        #################################
+
+                        loss += self.mse(
+
+                            outputs["take_profit"].squeeze(),
+
+                            y["take_profit"]
+
+                        )
+
+                        #################################
+
+                        loss += self.mse(
+
+                            outputs["stop_loss"].squeeze(),
+
+                            y["stop_loss"]
+
+                        )
+
+                except RuntimeError as error:
+
+                    if "out of memory" in str(error).lower():
+
+                        if torch.cuda.is_available():
+
+                            torch.cuda.empty_cache()
+
+                        continue
+
+                    print(
+
+                        "\nLoss Error :",
+
+                        error
 
                     )
 
-                    #########################################
-
-                    loss = 0
-
-                    #########################################
-
-                    loss += self.ce(
-
-                        outputs["direction"],
-
-                        y["direction"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.ce(
-
-                        outputs["reversal"],
-
-                        y["reversal"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.ce(
-
-                        outputs["market_regime"],
-
-                        y["market_regime"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.mse(
-
-                        outputs["confidence"].squeeze(),
-
-                        y["confidence"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.mse(
-
-                        outputs["volatility"].squeeze(),
-
-                        y["volatility"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.mse(
-
-                        outputs["take_profit"].squeeze(),
-
-                        y["take_profit"]
-
-                    )
-
-                    #########################################
-
-                    loss += self.mse(
-
-                        outputs["stop_loss"].squeeze(),
-
-                        y["stop_loss"]
-
-                    )
+                    continue
 
                 except Exception as error:
 
                     print(
 
-                        "\nLoss Error :", error
+                        "\nLoss Error :",
+
+                        error
 
                     )
 
@@ -371,27 +437,102 @@ class Trainer:
 
                 #################################################
 
-                loss.backward()
+                try:
+
+                    if self.use_amp:
+
+                        self.scaler.scale(
+
+                            loss
+
+                        ).backward()
+
+                        #################################
+
+                        self.scaler.unscale_(
+
+                            self.optimizer
+
+                        )
+
+                        #################################
+
+                        torch.nn.utils.clip_grad_norm_(
+
+                            self.model.parameters(),
+
+                            max_norm=1.0
+
+                        )
+
+                        #################################
+
+                        self.scaler.step(
+
+                            self.optimizer
+
+                        )
+
+                        #################################
+
+                        self.scaler.update()
+
+                    else:
+
+                        loss.backward()
+
+                        #################################
+
+                        torch.nn.utils.clip_grad_norm_(
+
+                            self.model.parameters(),
+
+                            max_norm=1.0
+
+                        )
+
+                        #################################
+
+                        self.optimizer.step()
+
+                except RuntimeError as error:
+
+                    if "out of memory" in str(error).lower():
+
+                        if torch.cuda.is_available():
+
+                            torch.cuda.empty_cache()
+
+                        continue
+
+                    print(
+
+                        "\nBackward Error :",
+
+                        error
+
+                    )
+
+                    continue
 
                 #################################################
 
-                torch.nn.utils.clip_grad_norm_(
+                total_loss += float(
 
-                    self.model.parameters(),
+                    loss.detach()
 
-                    max_norm=1.0
+                    .cpu()
+
+                    .item()
 
                 )
 
-                #################################################
-
-                self.optimizer.step()
-
-                #################################################
-
-                total_loss += loss.item()
-
                 batch_count += 1
+
+                #################################################
+
+                del outputs
+                del loss
 
             #################################################
 
@@ -427,7 +568,9 @@ class Trainer:
 
                     torch.cuda.memory_allocated()
 
-                    / 1024**3,
+                    /
+
+                    (1024**3),
 
                     2
 
@@ -453,15 +596,9 @@ class Trainer:
 
             #################################################
 
-            if (
+            gc.collect()
 
-                torch.cuda.is_available()
-
-                and
-
-                (epoch + 1) % 5 == 0
-
-            ):
+            if torch.cuda.is_available():
 
                 torch.cuda.empty_cache()
 
