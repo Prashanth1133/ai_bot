@@ -1,4 +1,5 @@
 import os
+
 import torch
 import torch.nn as nn
 
@@ -14,11 +15,11 @@ class Trainer:
         dataset,
         save_path="models/trading_transformer.pt",
         batch_size=64,
-        lr=1e-4
+        lr=1e-4,
 
     ):
 
-        ##################################################
+        #################################################
 
         self.device = torch.device(
 
@@ -32,27 +33,73 @@ class Trainer:
 
         )
 
+        #################################################
+
         print("\n")
         print("=" * 60)
         print("Using Device :", self.device)
         print("=" * 60)
-        print("\n")
-
-        ##################################################
 
         if torch.cuda.is_available():
 
-            batch_size = 512
+            print(
+
+                "GPU :",
+
+                torch.cuda.get_device_name(
+
+                    0
+
+                )
+
+            )
+
+        print("=" * 60)
+        print("\n")
+
+        #################################################
+
+        if torch.cuda.is_available():
+
+            torch.backends.cudnn.benchmark = True
+
+            torch.backends.cuda.matmul.allow_tf32 = True
+
+            torch.backends.cudnn.allow_tf32 = True
+
+            torch.set_float32_matmul_precision(
+
+                "high"
+
+            )
+
+        #################################################
+
+        if torch.cuda.is_available():
+
+            batch_size = 1024
+
             workers = 2
+
             pin_memory = True
+
+            persistent_workers = True
+
+            prefetch_factor = 4
 
         else:
 
             batch_size = 64
+
             workers = 0
+
             pin_memory = False
 
-        ##################################################
+            persistent_workers = False
+
+            prefetch_factor = None
+
+        #################################################
 
         self.model = model.to(
 
@@ -62,25 +109,49 @@ class Trainer:
 
         self.save_path = save_path
 
-        ##################################################
+        #################################################
 
-        self.loader = DataLoader(
+        if workers > 0:
 
-            dataset,
+            self.loader = DataLoader(
 
-            batch_size=batch_size,
+                dataset,
 
-            shuffle=True,
+                batch_size=batch_size,
 
-            num_workers=workers,
+                shuffle=True,
 
-            pin_memory=pin_memory,
+                num_workers=workers,
 
-            drop_last=False,
+                pin_memory=pin_memory,
 
-        )
+                persistent_workers=persistent_workers,
 
-        ##################################################
+                prefetch_factor=prefetch_factor,
+
+                drop_last=False,
+
+            )
+
+        else:
+
+            self.loader = DataLoader(
+
+                dataset,
+
+                batch_size=batch_size,
+
+                shuffle=True,
+
+                num_workers=workers,
+
+                pin_memory=pin_memory,
+
+                drop_last=False,
+
+            )
+
+        #################################################
 
         self.optimizer = torch.optim.AdamW(
 
@@ -92,13 +163,13 @@ class Trainer:
 
         )
 
-        ##################################################
+        #################################################
 
         self.ce = nn.CrossEntropyLoss()
 
         self.mse = nn.MSELoss()
 
-    ##################################################
+    #################################################
 
     def has_nan(
 
@@ -117,7 +188,7 @@ class Trainer:
 
         )
 
-    ##################################################
+    #################################################
 
     def train(
 
@@ -128,7 +199,7 @@ class Trainer:
 
         self.model.train()
 
-        ##################################################
+        #################################################
 
         for epoch in range(epochs):
 
@@ -136,11 +207,11 @@ class Trainer:
 
             batch_count = 0
 
-            ##################################################
+            #################################################
 
             for x, y in self.loader:
 
-                ##############################################
+                #################################################
 
                 x = x.to(
 
@@ -150,19 +221,13 @@ class Trainer:
 
                 )
 
-                ##############################################
+                #################################################
 
                 if self.has_nan(x):
 
-                    print(
-
-                        "NaN found in X. Skipping batch."
-
-                    )
-
                     continue
 
-                ##############################################
+                #################################################
 
                 skip_batch = False
 
@@ -182,13 +247,6 @@ class Trainer:
 
                     ):
 
-                        print(
-
-                            f"NaN found in {key}. "
-                            f"Skipping batch."
-
-                        )
-
                         skip_batch = True
 
                         break
@@ -197,7 +255,7 @@ class Trainer:
 
                     continue
 
-                ##############################################
+                #################################################
 
                 self.optimizer.zero_grad(
 
@@ -205,21 +263,21 @@ class Trainer:
 
                 )
 
-                ##############################################
-
-                outputs = self.model(
-
-                    x
-
-                )
-
-                ##############################################
+                #################################################
 
                 try:
 
+                    outputs = self.model(
+
+                        x
+
+                    )
+
+                    #########################################
+
                     loss = 0
 
-                    ##########################################
+                    #########################################
 
                     loss += self.ce(
 
@@ -229,7 +287,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.ce(
 
@@ -239,7 +297,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.ce(
 
@@ -249,7 +307,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.mse(
 
@@ -259,7 +317,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.mse(
 
@@ -269,7 +327,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.mse(
 
@@ -279,7 +337,7 @@ class Trainer:
 
                     )
 
-                    ##########################################
+                    #########################################
 
                     loss += self.mse(
 
@@ -293,41 +351,29 @@ class Trainer:
 
                     print(
 
-                        f"\nLoss Error : {error}"
+                        "\nLoss Error :", error
 
                     )
 
                     continue
 
-                ##############################################
+                #################################################
 
                 if torch.isnan(loss):
 
-                    print(
-
-                        "Loss = NaN. Skipping batch."
-
-                    )
-
                     continue
 
-                ##############################################
+                #################################################
 
                 if torch.isinf(loss):
 
-                    print(
-
-                        "Loss = Inf. Skipping batch."
-
-                    )
-
                     continue
 
-                ##############################################
+                #################################################
 
                 loss.backward()
 
-                ##############################################
+                #################################################
 
                 torch.nn.utils.clip_grad_norm_(
 
@@ -337,17 +383,17 @@ class Trainer:
 
                 )
 
-                ##############################################
+                #################################################
 
                 self.optimizer.step()
 
-                ##############################################
+                #################################################
 
                 total_loss += loss.item()
 
                 batch_count += 1
 
-            ##################################################
+            #################################################
 
             if batch_count == 0:
 
@@ -359,7 +405,7 @@ class Trainer:
 
                 continue
 
-            ##################################################
+            #################################################
 
             epoch_loss = (
 
@@ -371,7 +417,23 @@ class Trainer:
 
             )
 
-            ##################################################
+            #################################################
+
+            gpu_memory = 0
+
+            if torch.cuda.is_available():
+
+                gpu_memory = round(
+
+                    torch.cuda.memory_allocated()
+
+                    / 1024**3,
+
+                    2
+
+                )
+
+            #################################################
 
             print(
 
@@ -383,9 +445,27 @@ class Trainer:
 
                 f"{epoch_loss:.6f}"
 
+                f"     GPU = "
+
+                f"{gpu_memory} GB"
+
             )
 
-        ##################################################
+            #################################################
+
+            if (
+
+                torch.cuda.is_available()
+
+                and
+
+                (epoch + 1) % 5 == 0
+
+            ):
+
+                torch.cuda.empty_cache()
+
+        #################################################
 
         os.makedirs(
 
@@ -395,7 +475,7 @@ class Trainer:
 
         )
 
-        ##################################################
+        #################################################
 
         torch.save(
 
@@ -405,7 +485,7 @@ class Trainer:
 
         )
 
-        ##################################################
+        #################################################
 
         print("\n")
         print("=" * 60)
@@ -414,7 +494,7 @@ class Trainer:
         print("=" * 60)
         print("\n")
 
-    ##################################################
+    #################################################
 
     def get_device(
 
