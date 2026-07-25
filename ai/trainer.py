@@ -1,7 +1,4 @@
-# ai/trainer.py
-
 import os
-import gc
 import torch
 import torch.nn as nn
 
@@ -16,12 +13,13 @@ class Trainer:
         model,
         dataset,
         save_path="models/trading_transformer.pt",
-        batch_size=64,
+        batch_size=128,
         lr=1e-4,
+        accumulation_steps=4,
 
     ):
 
-        #################################################
+        ##################################################
 
         self.device = torch.device(
 
@@ -35,7 +33,7 @@ class Trainer:
 
         )
 
-        #################################################
+        ##################################################
 
         print("\n")
         print("=" * 60)
@@ -59,7 +57,7 @@ class Trainer:
         print("=" * 60)
         print("\n")
 
-        #################################################
+        ##################################################
 
         if torch.cuda.is_available():
 
@@ -75,19 +73,15 @@ class Trainer:
 
             )
 
-        #################################################
+        ##################################################
 
         if torch.cuda.is_available():
 
-            batch_size = 512
+            batch_size = 128
 
             workers = 2
 
             pin_memory = True
-
-            persistent_workers = True
-
-            prefetch_factor = 2
 
         else:
 
@@ -97,11 +91,7 @@ class Trainer:
 
             pin_memory = False
 
-            persistent_workers = False
-
-            prefetch_factor = None
-
-        #################################################
+        ##################################################
 
         self.model = model.to(
 
@@ -111,49 +101,31 @@ class Trainer:
 
         self.save_path = save_path
 
-        #################################################
+        self.accumulation_steps = (
 
-        if workers > 0:
+            accumulation_steps
 
-            self.loader = DataLoader(
+        )
 
-                dataset,
+        ##################################################
 
-                batch_size=batch_size,
+        self.loader = DataLoader(
 
-                shuffle=True,
+            dataset,
 
-                num_workers=workers,
+            batch_size=batch_size,
 
-                pin_memory=pin_memory,
+            shuffle=True,
 
-                persistent_workers=persistent_workers,
+            num_workers=workers,
 
-                prefetch_factor=prefetch_factor,
+            pin_memory=pin_memory,
 
-                drop_last=False,
+            drop_last=False,
 
-            )
+        )
 
-        else:
-
-            self.loader = DataLoader(
-
-                dataset,
-
-                batch_size=batch_size,
-
-                shuffle=True,
-
-                num_workers=workers,
-
-                pin_memory=pin_memory,
-
-                drop_last=False,
-
-            )
-
-        #################################################
+        ##################################################
 
         self.optimizer = torch.optim.AdamW(
 
@@ -165,15 +137,37 @@ class Trainer:
 
         )
 
-        #################################################
+        ##################################################
+
+        self.scheduler = (
+
+            torch.optim.lr_scheduler.ReduceLROnPlateau(
+
+                self.optimizer,
+
+                mode="min",
+
+                factor=0.5,
+
+                patience=5,
+
+            )
+
+        )
+
+        ##################################################
 
         self.ce = nn.CrossEntropyLoss()
 
         self.mse = nn.MSELoss()
 
-        #################################################
+        ##################################################
 
-        self.use_amp = torch.cuda.is_available()
+        self.use_amp = (
+
+            torch.cuda.is_available()
+
+        )
 
         self.scaler = torch.amp.GradScaler(
 
@@ -183,7 +177,19 @@ class Trainer:
 
         )
 
-    #################################################
+        ##################################################
+
+        self.best_loss = (
+
+            float("inf")
+
+        )
+
+        self.patience = 10
+
+        self.wait = 0
+
+    ##################################################
 
     def has_nan(
 
@@ -210,18 +216,43 @@ class Trainer:
 
         )
 
-    #################################################
+    ##################################################
+
+    def save_checkpoint(
+
+        self,
+        epoch
+
+    ):
+
+        os.makedirs(
+
+            "models/checkpoints",
+
+            exist_ok=True
+
+        )
+
+        torch.save(
+
+            self.model.state_dict(),
+
+            f"models/checkpoints/epoch_{epoch}.pt"
+
+        )
+
+    ##################################################
 
     def train(
 
         self,
-        epochs=20
+        epochs=100
 
     ):
 
         self.model.train()
 
-        #################################################
+        ##################################################
 
         for epoch in range(epochs):
 
@@ -229,15 +260,50 @@ class Trainer:
 
             batch_count = 0
 
-            #################################################
+            ##################################################
 
-            for x, y in self.loader:
+            self.optimizer.zero_grad(
 
-                #################################################
+                set_to_none=True
 
-                try:
+            )
 
-                    x = x.to(
+            ##################################################
+
+            for batch_idx, (
+
+                x,
+                y
+
+            ) in enumerate(
+
+                self.loader
+
+            ):
+
+                ##################################################
+
+                x = x.to(
+
+                    self.device,
+
+                    non_blocking=True
+
+                )
+
+                ##################################################
+
+                if self.has_nan(x):
+
+                    continue
+
+                ##################################################
+
+                skip = False
+
+                for key in y:
+
+                    y[key] = y[key].to(
 
                         self.device,
 
@@ -245,209 +311,143 @@ class Trainer:
 
                     )
 
-                except Exception:
-
-                    continue
-
-                #################################################
-
-                if self.has_nan(x):
-
-                    continue
-
-                #################################################
-
-                skip_batch = False
-
-                for key in y:
-
-                    try:
-
-                        y[key] = y[key].to(
-
-                            self.device,
-
-                            non_blocking=True
-
-                        )
-
-                    except Exception:
-
-                        skip_batch = True
-
-                        break
-
                     if self.has_nan(
 
                         y[key]
 
                     ):
 
-                        skip_batch = True
-
+                        skip = True
                         break
 
-                if skip_batch:
+                if skip:
 
                     continue
 
-                #################################################
+                ##################################################
 
-                self.optimizer.zero_grad(
+                with torch.amp.autocast(
 
-                    set_to_none=True
+                    device_type="cuda",
 
-                )
+                    enabled=self.use_amp
 
-                #################################################
+                ):
 
-                try:
+                    outputs = self.model(
 
-                    with torch.amp.autocast(
+                        x
 
-                        device_type="cuda",
+                    )
 
-                        enabled=self.use_amp
+                    ##################################################
 
-                    ):
+                    loss = (
 
-                        outputs = self.model(
-
-                            x
-
-                        )
-
-                        #################################
-
-                        loss = 0
-
-                        #################################
-
-                        loss += self.ce(
+                        self.ce(
 
                             outputs["direction"],
-
                             y["direction"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.ce(
+                        self.ce(
 
                             outputs["reversal"],
-
                             y["reversal"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.ce(
+                        self.ce(
 
                             outputs["market_regime"],
-
                             y["market_regime"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.mse(
+                        self.mse(
 
                             outputs["confidence"].squeeze(),
-
                             y["confidence"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.mse(
+                        self.mse(
 
                             outputs["volatility"].squeeze(),
-
                             y["volatility"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.mse(
+                        self.mse(
 
                             outputs["take_profit"].squeeze(),
-
                             y["take_profit"]
 
                         )
 
-                        #################################
+                        +
 
-                        loss += self.mse(
+                        self.mse(
 
                             outputs["stop_loss"].squeeze(),
-
                             y["stop_loss"]
 
                         )
 
-                except RuntimeError as error:
-
-                    if "out of memory" in str(error).lower():
-
-                        if torch.cuda.is_available():
-
-                            torch.cuda.empty_cache()
-
-                        continue
-
-                    print(
-
-                        "\nLoss Error :",
-
-                        error
-
                     )
 
-                    continue
+                ##################################################
 
-                except Exception as error:
+                loss = (
 
-                    print(
+                    loss /
 
-                        "\nLoss Error :",
+                    self.accumulation_steps
 
-                        error
+                )
 
-                    )
+                ##################################################
 
-                    continue
+                if self.use_amp:
 
-                #################################################
+                    self.scaler.scale(
 
-                if torch.isnan(loss):
+                        loss
 
-                    continue
+                    ).backward()
 
-                #################################################
+                else:
 
-                if torch.isinf(loss):
+                    loss.backward()
 
-                    continue
+                ##################################################
 
-                #################################################
+                if (
 
-                try:
+                    (batch_idx + 1)
+
+                    %
+
+                    self.accumulation_steps
+
+                    == 0
+
+                ):
+
+                    ##################################################
 
                     if self.use_amp:
-
-                        self.scaler.scale(
-
-                            loss
-
-                        ).backward()
-
-                        #################################
 
                         self.scaler.unscale_(
 
@@ -455,17 +455,19 @@ class Trainer:
 
                         )
 
-                        #################################
+                    ##################################################
 
-                        torch.nn.utils.clip_grad_norm_(
+                    torch.nn.utils.clip_grad_norm_(
 
-                            self.model.parameters(),
+                        self.model.parameters(),
 
-                            max_norm=1.0
+                        max_norm=1.0
 
-                        )
+                    )
 
-                        #################################
+                    ##################################################
+
+                    if self.use_amp:
 
                         self.scaler.step(
 
@@ -473,92 +475,58 @@ class Trainer:
 
                         )
 
-                        #################################
-
                         self.scaler.update()
 
                     else:
 
-                        loss.backward()
-
-                        #################################
-
-                        torch.nn.utils.clip_grad_norm_(
-
-                            self.model.parameters(),
-
-                            max_norm=1.0
-
-                        )
-
-                        #################################
-
                         self.optimizer.step()
 
-                except RuntimeError as error:
+                    ##################################################
 
-                    if "out of memory" in str(error).lower():
+                    self.optimizer.zero_grad(
 
-                        if torch.cuda.is_available():
-
-                            torch.cuda.empty_cache()
-
-                        continue
-
-                    print(
-
-                        "\nBackward Error :",
-
-                        error
+                        set_to_none=True
 
                     )
 
-                    continue
+                ##################################################
 
-                #################################################
+                total_loss += (
 
-                total_loss += float(
+                    loss.item()
 
-                    loss.detach()
+                    *
 
-                    .cpu()
-
-                    .item()
+                    self.accumulation_steps
 
                 )
 
                 batch_count += 1
 
-                #################################################
-
-                del outputs
-                del loss
-
-            #################################################
-
-            if batch_count == 0:
-
-                print(
-
-                    f"Epoch {epoch+1} Failed."
-
-                )
-
-                continue
-
-            #################################################
+            ##################################################
 
             epoch_loss = (
 
-                total_loss
+                total_loss /
 
-                /
+                max(
 
-                batch_count
+                    batch_count,
+                    1
+
+                )
 
             )
 
-            #################################################
+            ##################################################
+
+            self.scheduler.step(
+
+                epoch_loss
+
+            )
+
+            ##################################################
 
             gpu_memory = 0
 
@@ -576,7 +544,7 @@ class Trainer:
 
                 )
 
-            #################################################
+            ##################################################
 
             print(
 
@@ -584,25 +552,93 @@ class Trainer:
 
                 f"{epoch+1}/{epochs}"
 
-                f"    Loss = "
+                f"   Loss={epoch_loss:.6f}"
 
-                f"{epoch_loss:.6f}"
-
-                f"     GPU = "
-
-                f"{gpu_memory} GB"
+                f"   GPU={gpu_memory} GB"
 
             )
 
-            #################################################
+            ##################################################
 
-            gc.collect()
+            if (
 
-            if torch.cuda.is_available():
+                epoch_loss
 
-                torch.cuda.empty_cache()
+                <
 
-        #################################################
+                self.best_loss
+
+            ):
+
+                self.best_loss = (
+
+                    epoch_loss
+
+                )
+
+                self.wait = 0
+
+                os.makedirs(
+
+                    "models",
+
+                    exist_ok=True
+
+                )
+
+                torch.save(
+
+                    self.model.state_dict(),
+
+                    "models/best_model.pt"
+
+                )
+
+            else:
+
+                self.wait += 1
+
+            ##################################################
+
+            if (
+
+                (epoch + 1)
+
+                %
+
+                10
+
+                == 0
+
+            ):
+
+                self.save_checkpoint(
+
+                    epoch + 1
+
+                )
+
+            ##################################################
+
+            if (
+
+                self.wait
+
+                >=
+
+                self.patience
+
+            ):
+
+                print(
+
+                    "\nEarly Stopping Activated.\n"
+
+                )
+
+                break
+
+        ##################################################
 
         os.makedirs(
 
@@ -612,7 +648,7 @@ class Trainer:
 
         )
 
-        #################################################
+        ##################################################
 
         torch.save(
 
@@ -622,7 +658,7 @@ class Trainer:
 
         )
 
-        #################################################
+        ##################################################
 
         print("\n")
         print("=" * 60)
@@ -631,7 +667,7 @@ class Trainer:
         print("=" * 60)
         print("\n")
 
-    #################################################
+    ##################################################
 
     def get_device(
 
