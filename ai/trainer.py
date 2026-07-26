@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
+from torch.amp import autocast
+from torch.amp import GradScaler
 
 
 class Trainer:
@@ -16,7 +18,6 @@ class Trainer:
         save_path="models/trading_transformer.pt",
         batch_size=64,
         lr=1e-4,
-
         checkpoint_interval=20,
         early_stop_patience=25,
         resume=False,
@@ -39,9 +40,28 @@ class Trainer:
 
         ##################################################
 
+        self.use_amp = (
+
+            torch.cuda.is_available()
+
+        )
+
+        ##################################################
+
+        self.scaler = GradScaler(
+
+            "cuda",
+
+            enabled=self.use_amp
+
+        )
+
+        ##################################################
+
         print("\n")
         print("=" * 60)
         print("Using Device :", self.device)
+        print("Mixed Precision :", self.use_amp)
         print("=" * 60)
         print("\n")
 
@@ -229,7 +249,7 @@ class Trainer:
 
             {
 
-                "epoch":epoch,
+                "epoch": epoch,
 
                 "model":
 
@@ -246,6 +266,10 @@ class Trainer:
                 "best_loss":
 
                 self.best_loss,
+
+                "scaler":
+
+                self.scaler.state_dict(),
 
             },
 
@@ -310,6 +334,14 @@ class Trainer:
 
         )
 
+        if "scaler" in checkpoint:
+
+            self.scaler.load_state_dict(
+
+                checkpoint["scaler"]
+
+            )
+
         self.best_loss = (
 
             checkpoint["best_loss"]
@@ -324,7 +356,7 @@ class Trainer:
 
         print()
 
-        print("="*60)
+        print("=" * 60)
         print(
 
             "Resuming From Epoch :",
@@ -332,7 +364,7 @@ class Trainer:
             self.start_epoch
 
         )
-        print("="*60)
+        print("=" * 60)
         print()
 
     ##################################################
@@ -355,7 +387,7 @@ class Trainer:
 
             {
 
-                "epoch":epoch,
+                "epoch": epoch,
 
                 "model":
 
@@ -372,6 +404,10 @@ class Trainer:
                 "best_loss":
 
                 self.best_loss,
+
+                "scaler":
+
+                self.scaler.state_dict(),
 
             },
 
@@ -405,7 +441,7 @@ class Trainer:
 
             ##################################################
 
-            for x,y in self.loader:
+            for x, y in self.loader:
 
                 try:
 
@@ -462,71 +498,79 @@ class Trainer:
 
                     ##########################################
 
-                    outputs = self.model(
+                    with autocast(
 
-                        x
+                        device_type="cuda",
 
-                    )
+                        enabled=self.use_amp
 
-                    ##########################################
+                    ):
 
-                    loss = 0
+                        outputs = self.model(
 
-                    loss += self.ce(
+                            x
 
-                        outputs["direction"],
+                        )
 
-                        y["direction"]
+                        ######################################
 
-                    )
+                        loss = 0
 
-                    loss += self.ce(
+                        loss += self.ce(
 
-                        outputs["reversal"],
+                            outputs["direction"],
 
-                        y["reversal"]
+                            y["direction"]
 
-                    )
+                        )
 
-                    loss += self.ce(
+                        loss += self.ce(
 
-                        outputs["market_regime"],
+                            outputs["reversal"],
 
-                        y["market_regime"]
+                            y["reversal"]
 
-                    )
+                        )
 
-                    loss += self.mse(
+                        loss += self.ce(
 
-                        outputs["confidence"].squeeze(),
+                            outputs["market_regime"],
 
-                        y["confidence"]
+                            y["market_regime"]
 
-                    )
+                        )
 
-                    loss += self.mse(
+                        loss += self.mse(
 
-                        outputs["volatility"].squeeze(),
+                            outputs["confidence"].squeeze(),
 
-                        y["volatility"]
+                            y["confidence"]
 
-                    )
+                        )
 
-                    loss += self.mse(
+                        loss += self.mse(
 
-                        outputs["take_profit"].squeeze(),
+                            outputs["volatility"].squeeze(),
 
-                        y["take_profit"]
+                            y["volatility"]
 
-                    )
+                        )
 
-                    loss += self.mse(
+                        loss += self.mse(
 
-                        outputs["stop_loss"].squeeze(),
+                            outputs["take_profit"].squeeze(),
 
-                        y["stop_loss"]
+                            y["take_profit"]
 
-                    )
+                        )
+
+                        loss += self.mse(
+
+                            outputs["stop_loss"].squeeze(),
+
+                            y["stop_loss"]
+
+                        )
 
                     ##########################################
 
@@ -540,7 +584,19 @@ class Trainer:
 
                     ##########################################
 
-                    loss.backward()
+                    self.scaler.scale(
+
+                        loss
+
+                    ).backward()
+
+                    ##########################################
+
+                    self.scaler.unscale_(
+
+                        self.optimizer
+
+                    )
 
                     ##########################################
 
@@ -554,7 +610,15 @@ class Trainer:
 
                     ##########################################
 
-                    self.optimizer.step()
+                    self.scaler.step(
+
+                        self.optimizer
+
+                    )
+
+                    ##########################################
+
+                    self.scaler.update()
 
                     ##########################################
 
@@ -710,11 +774,11 @@ class Trainer:
 
                 print()
 
-                print("="*60)
+                print("=" * 60)
                 print(
                     "EARLY STOPPING ACTIVATED"
                 )
-                print("="*60)
+                print("=" * 60)
                 print()
 
                 break
