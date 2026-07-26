@@ -1,11 +1,10 @@
 import os
 import gc
+
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
-from torch.amp import autocast
-from torch.amp import GradScaler
 
 
 class Trainer:
@@ -40,28 +39,9 @@ class Trainer:
 
         ##################################################
 
-        self.use_amp = (
-
-            torch.cuda.is_available()
-
-        )
-
-        ##################################################
-
-        self.scaler = GradScaler(
-
-            "cuda",
-
-            enabled=self.use_amp
-
-        )
-
-        ##################################################
-
         print("\n")
         print("=" * 60)
         print("Using Device :", self.device)
-        print("Mixed Precision :", self.use_amp)
         print("=" * 60)
         print("\n")
 
@@ -116,7 +96,6 @@ class Trainer:
             self.model.parameters(),
 
             lr=lr,
-
             weight_decay=1e-5,
 
         )
@@ -126,15 +105,12 @@ class Trainer:
         self.scheduler = (
 
             torch.optim.lr_scheduler.
-
             ReduceLROnPlateau(
 
                 self.optimizer,
 
                 mode="min",
-
                 factor=0.5,
-
                 patience=5,
 
             )
@@ -174,7 +150,6 @@ class Trainer:
         os.makedirs(
 
             "models",
-
             exist_ok=True
 
         )
@@ -182,7 +157,6 @@ class Trainer:
         os.makedirs(
 
             "models/checkpoints",
-
             exist_ok=True
 
         )
@@ -204,11 +178,15 @@ class Trainer:
 
         return (
 
-            torch.isnan(tensor).any()
+            torch.isnan(
+                tensor
+            ).any()
 
             or
 
-            torch.isinf(tensor).any()
+            torch.isinf(
+                tensor
+            ).any()
 
         )
 
@@ -239,9 +217,8 @@ class Trainer:
 
         path = (
 
-            f"models/checkpoints/"
-            f"checkpoint_epoch_"
-            f"{epoch}.pt"
+            "models/checkpoints/"
+            f"checkpoint_epoch_{epoch}.pt"
 
         )
 
@@ -249,27 +226,19 @@ class Trainer:
 
             {
 
-                "epoch": epoch,
+                "epoch":epoch,
 
                 "model":
-
                 self.model.state_dict(),
 
                 "optimizer":
-
                 self.optimizer.state_dict(),
 
                 "scheduler":
-
                 self.scheduler.state_dict(),
 
                 "best_loss":
-
                 self.best_loss,
-
-                "scaler":
-
-                self.scaler.state_dict(),
 
             },
 
@@ -277,11 +246,55 @@ class Trainer:
 
         )
 
+        print()
+
         print(
 
-            f"\nCheckpoint Saved :"
+            f"Checkpoint Saved :"
 
-            f"\n{path}"
+        )
+
+        print(path)
+
+        print()
+
+    ##################################################
+
+    def update_latest(
+
+        self,
+        epoch
+
+    ):
+
+        path = (
+
+            "models/checkpoints/"
+            "latest.pt"
+
+        )
+
+        torch.save(
+
+            {
+
+                "epoch":epoch,
+
+                "model":
+                self.model.state_dict(),
+
+                "optimizer":
+                self.optimizer.state_dict(),
+
+                "scheduler":
+                self.scheduler.state_dict(),
+
+                "best_loss":
+                self.best_loss,
+
+            },
+
+            path
 
         )
 
@@ -334,14 +347,6 @@ class Trainer:
 
         )
 
-        if "scaler" in checkpoint:
-
-            self.scaler.load_state_dict(
-
-                checkpoint["scaler"]
-
-            )
-
         self.best_loss = (
 
             checkpoint["best_loss"]
@@ -350,13 +355,14 @@ class Trainer:
 
         self.start_epoch = (
 
-            checkpoint["epoch"]
+            checkpoint["epoch"] + 1
 
         )
 
         print()
 
-        print("=" * 60)
+        print("="*60)
+
         print(
 
             "Resuming From Epoch :",
@@ -364,52 +370,29 @@ class Trainer:
             self.start_epoch
 
         )
-        print("=" * 60)
+
+        print("="*60)
+
         print()
 
     ##################################################
 
-    def update_latest(
+    def save_best_model(
 
-        self,
-        epoch
+        self
 
     ):
 
         path = (
 
-            "models/checkpoints/"
-            "latest.pt"
+            "models/"
+            "best_model.pt"
 
         )
 
         torch.save(
 
-            {
-
-                "epoch": epoch,
-
-                "model":
-
-                self.model.state_dict(),
-
-                "optimizer":
-
-                self.optimizer.state_dict(),
-
-                "scheduler":
-
-                self.scheduler.state_dict(),
-
-                "best_loss":
-
-                self.best_loss,
-
-                "scaler":
-
-                self.scaler.state_dict(),
-
-            },
+            self.model.state_dict(),
 
             path
 
@@ -441,7 +424,7 @@ class Trainer:
 
             ##################################################
 
-            for x, y in self.loader:
+            for x,y in self.loader:
 
                 try:
 
@@ -498,79 +481,64 @@ class Trainer:
 
                     ##########################################
 
-                    with autocast(
+                    outputs = self.model(
 
-                        device_type="cuda",
+                        x
 
-                        enabled=self.use_amp
+                    )
 
-                    ):
+                    ##########################################
 
-                        outputs = self.model(
+                    loss = 0
 
-                            x
+                    loss += self.ce(
 
-                        )
+                        outputs["direction"],
+                        y["direction"]
 
-                        ######################################
+                    )
 
-                        loss = 0
+                    loss += self.ce(
 
-                        loss += self.ce(
+                        outputs["reversal"],
+                        y["reversal"]
 
-                            outputs["direction"],
+                    )
 
-                            y["direction"]
+                    loss += self.ce(
 
-                        )
+                        outputs["market_regime"],
+                        y["market_regime"]
 
-                        loss += self.ce(
+                    )
 
-                            outputs["reversal"],
+                    loss += self.mse(
 
-                            y["reversal"]
+                        outputs["confidence"].squeeze(),
+                        y["confidence"]
 
-                        )
+                    )
 
-                        loss += self.ce(
+                    loss += self.mse(
 
-                            outputs["market_regime"],
+                        outputs["volatility"].squeeze(),
+                        y["volatility"]
 
-                            y["market_regime"]
+                    )
 
-                        )
+                    loss += self.mse(
 
-                        loss += self.mse(
+                        outputs["take_profit"].squeeze(),
+                        y["take_profit"]
 
-                            outputs["confidence"].squeeze(),
+                    )
 
-                            y["confidence"]
+                    loss += self.mse(
 
-                        )
+                        outputs["stop_loss"].squeeze(),
+                        y["stop_loss"]
 
-                        loss += self.mse(
-
-                            outputs["volatility"].squeeze(),
-
-                            y["volatility"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["take_profit"].squeeze(),
-
-                            y["take_profit"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["stop_loss"].squeeze(),
-
-                            y["stop_loss"]
-
-                        )
+                    )
 
                     ##########################################
 
@@ -584,19 +552,7 @@ class Trainer:
 
                     ##########################################
 
-                    self.scaler.scale(
-
-                        loss
-
-                    ).backward()
-
-                    ##########################################
-
-                    self.scaler.unscale_(
-
-                        self.optimizer
-
-                    )
+                    loss.backward()
 
                     ##########################################
 
@@ -610,19 +566,15 @@ class Trainer:
 
                     ##########################################
 
-                    self.scaler.step(
+                    self.optimizer.step()
 
-                        self.optimizer
+                    ##########################################
+
+                    total_loss += (
+
+                        loss.item()
 
                     )
-
-                    ##########################################
-
-                    self.scaler.update()
-
-                    ##########################################
-
-                    total_loss += loss.item()
 
                     batch_count += 1
 
@@ -650,7 +602,9 @@ class Trainer:
 
                         in
 
-                        str(error).lower()
+                        str(
+                            error
+                        ).lower()
 
                     ):
 
@@ -668,7 +622,15 @@ class Trainer:
 
                 ##################################################
 
-                except Exception:
+                except Exception as error:
+
+                    print(
+
+                        "\nERROR :",
+
+                        error
+
+                    )
 
                     continue
 
@@ -698,6 +660,15 @@ class Trainer:
 
             ##################################################
 
+            current_lr = (
+
+                self.optimizer.
+                param_groups[0]["lr"]
+
+            )
+
+            ##################################################
+
             print(
 
                 f"Epoch "
@@ -707,6 +678,10 @@ class Trainer:
                 f"    Loss = "
 
                 f"{epoch_loss:.6f}"
+
+                f"    LR = "
+
+                f"{current_lr:.8f}"
 
             )
 
@@ -729,6 +704,8 @@ class Trainer:
                 )
 
                 self.no_improvement = 0
+
+                self.save_best_model()
 
             else:
 
@@ -774,11 +751,11 @@ class Trainer:
 
                 print()
 
-                print("=" * 60)
+                print("="*60)
                 print(
                     "EARLY STOPPING ACTIVATED"
                 )
-                print("=" * 60)
+                print("="*60)
                 print()
 
                 break
@@ -799,12 +776,13 @@ class Trainer:
 
         ##################################################
 
-        print("\n")
-        print("=" * 60)
+        print()
+
+        print("="*60)
         print("MODEL SAVED")
         print(self.save_path)
-        print("=" * 60)
-        print("\n")
+        print("="*60)
+        print()
 
     ##################################################
 
