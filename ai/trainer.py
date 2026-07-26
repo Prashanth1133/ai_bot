@@ -1,29 +1,49 @@
+# ai/trainer.py
+
 import os
 import gc
-
+import csv
+import json
+import time
 import torch
 import torch.nn as nn
 
+from datetime import datetime
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 
 
 class Trainer:
 
     def __init__(
-
         self,
         model,
         dataset,
-        save_path="models/trading_transformer.pt",
+        save_path="models/Production/production_v1.pt",
         batch_size=64,
         lr=1e-4,
+        weight_decay=1e-5,
         checkpoint_interval=20,
         early_stop_patience=25,
+        validation_split=0.15,
         resume=False,
-
     ):
 
-        ##################################################
+        ####################################################
+
+        self.resume = resume
+
+        self.lr = lr
+
+        self.weight_decay = weight_decay
+
+        self.validation_split = validation_split
+
+        self.checkpoint_interval = checkpoint_interval
+
+        self.early_stop_patience = early_stop_patience
+
+        ####################################################
 
         self.device = torch.device(
 
@@ -37,29 +57,164 @@ class Trainer:
 
         )
 
-        ##################################################
-
-        print("\n")
-        print("=" * 60)
-        print("Using Device :", self.device)
-        print("=" * 60)
-        print("\n")
-
-        ##################################################
+        ####################################################
 
         if torch.cuda.is_available():
 
-            batch_size = 512
+            total_memory = round(
+
+                torch.cuda.get_device_properties(
+                    0
+                ).total_memory / (1024 ** 3),
+
+                2
+
+            )
+
+            if total_memory >= 24:
+
+                batch_size = 1024
+
+            elif total_memory >= 16:
+
+                batch_size = 512
+
+            elif total_memory >= 12:
+
+                batch_size = 256
+
+            else:
+
+                batch_size = 128
+
             workers = 2
+
             pin_memory = True
 
         else:
 
+            total_memory = 0
+
             batch_size = 64
+
             workers = 0
+
             pin_memory = False
 
-        ##################################################
+        ####################################################
+
+        self.batch_size = batch_size
+
+        self.workers = workers
+
+        self.pin_memory = pin_memory
+
+        ####################################################
+
+        print("\n")
+        print("=" * 60)
+        print("Using Device :", self.device)
+        print("Batch Size :", batch_size)
+        print("=" * 60)
+        print("\n")
+
+        ####################################################
+
+        os.makedirs(
+            "models/Production",
+            exist_ok=True
+        )
+
+        os.makedirs(
+            "models/Production/Epochs",
+            exist_ok=True
+        )
+
+        os.makedirs(
+            "models/Production/Checkpoints",
+            exist_ok=True
+        )
+
+        ####################################################
+
+        self.save_path = save_path
+
+        ####################################################
+
+        total_size = len(dataset)
+
+        validation_size = int(
+
+            total_size *
+
+            validation_split
+
+        )
+
+        train_size = (
+
+            total_size -
+
+            validation_size
+
+        )
+
+        ####################################################
+
+        self.train_dataset, self.validation_dataset = (
+
+            random_split(
+
+                dataset,
+
+                [
+
+                    train_size,
+                    validation_size
+
+                ]
+
+            )
+
+        )
+
+        ####################################################
+
+        self.loader = DataLoader(
+
+            self.train_dataset,
+
+            batch_size=batch_size,
+
+            shuffle=True,
+
+            pin_memory=pin_memory,
+
+            num_workers=workers,
+
+            drop_last=False,
+
+        )
+
+        ####################################################
+
+        self.validation_loader = DataLoader(
+
+            self.validation_dataset,
+
+            batch_size=batch_size,
+
+            shuffle=False,
+
+            pin_memory=pin_memory,
+
+            num_workers=workers,
+
+            drop_last=False,
+
+        )
+
+        ####################################################
 
         self.model = model.to(
 
@@ -67,40 +222,59 @@ class Trainer:
 
         )
 
-        self.save_path = save_path
+        ####################################################
 
-        self.resume = resume
+        if (
 
-        ##################################################
+            torch.cuda.is_available()
 
-        self.loader = DataLoader(
+            and
 
-            dataset,
+            hasattr(
 
-            batch_size=batch_size,
+                torch,
 
-            shuffle=True,
+                "compile"
 
-            num_workers=workers,
+            )
 
-            pin_memory=pin_memory,
+        ):
 
-            drop_last=False,
+            try:
 
-        )
+                self.model = (
 
-        ##################################################
+                    torch.compile(
+
+                        self.model
+
+                    )
+
+                )
+
+                print(
+
+                    "Model Compiled."
+
+                )
+
+            except Exception:
+
+                pass
+
+        ####################################################
 
         self.optimizer = torch.optim.AdamW(
 
             self.model.parameters(),
 
             lr=lr,
-            weight_decay=1e-5,
+
+            weight_decay=weight_decay,
 
         )
 
-        ##################################################
+        ####################################################
 
         self.scheduler = (
 
@@ -110,64 +284,60 @@ class Trainer:
                 self.optimizer,
 
                 mode="min",
-                factor=0.5,
+
+                factor=0.50,
+
                 patience=5,
 
             )
 
         )
 
-        ##################################################
+        ####################################################
 
         self.ce = nn.CrossEntropyLoss()
 
         self.mse = nn.MSELoss()
 
-        ##################################################
+        ####################################################
 
-        self.best_loss = float("inf")
+        self.best_loss = float(
+
+            "inf"
+
+        )
 
         self.no_improvement = 0
 
-        self.early_stop_patience = (
-
-            early_stop_patience
-
-        )
-
-        ##################################################
-
-        self.checkpoint_interval = (
-
-            checkpoint_interval
-
-        )
-
         self.start_epoch = 0
 
-        ##################################################
+        ####################################################
 
-        os.makedirs(
+        self.training_history = []
 
-            "models",
-            exist_ok=True
+        ####################################################
+
+        self.save_dataset_information(
+
+            total_size,
+
+            train_size,
+
+            validation_size
 
         )
 
-        os.makedirs(
+        self.save_training_configuration()
 
-            "models/checkpoints",
-            exist_ok=True
+        self.save_gpu_information()
 
-        )
-
-        ##################################################
+        ####################################################
 
         if self.resume:
 
             self.load_checkpoint()
 
-    ##################################################
+    ####################################################
 
     def has_nan(
 
@@ -190,7 +360,7 @@ class Trainer:
 
         )
 
-    ##################################################
+    ####################################################
 
     def clear_gpu(
 
@@ -206,7 +376,205 @@ class Trainer:
 
             torch.cuda.ipc_collect()
 
-    ##################################################
+    ####################################################
+
+    def calculate_loss(
+
+        self,
+        outputs,
+        y
+
+    ):
+
+        loss = 0
+
+        loss += self.ce(
+
+            outputs["direction"],
+
+            y["direction"]
+
+        )
+
+        loss += self.ce(
+
+            outputs["reversal"],
+
+            y["reversal"]
+
+        )
+
+        loss += self.ce(
+
+            outputs["market_regime"],
+
+            y["market_regime"]
+
+        )
+
+        loss += self.mse(
+
+            outputs["confidence"].squeeze(),
+
+            y["confidence"]
+
+        )
+
+        loss += self.mse(
+
+            outputs["volatility"].squeeze(),
+
+            y["volatility"]
+
+        )
+
+        loss += self.mse(
+
+            outputs["take_profit"].squeeze(),
+
+            y["take_profit"]
+
+        )
+
+        loss += self.mse(
+
+            outputs["stop_loss"].squeeze(),
+
+            y["stop_loss"]
+
+        )
+
+        return loss
+
+    ####################################################
+
+    def validate(
+
+        self
+
+    ):
+
+        self.model.eval()
+
+        total_loss = 0
+
+        batches = 0
+
+        with torch.no_grad():
+
+            for x,y in self.validation_loader:
+
+                x = x.to(self.device)
+
+                for key in y:
+
+                    y[key] = y[key].to(
+
+                        self.device
+
+                    )
+
+                outputs = self.model(x)
+
+                loss = self.calculate_loss(
+
+                    outputs,
+                    y
+
+                )
+
+                total_loss += (
+
+                    loss.item()
+
+                )
+
+                batches += 1
+
+        self.model.train()
+
+        if batches == 0:
+
+            return 0
+
+        return (
+
+            total_loss /
+
+            batches
+
+        )
+
+    ####################################################
+
+    def save_best_model(
+
+        self
+
+    ):
+
+        torch.save(
+
+            self.model.state_dict(),
+
+            "models/Production/"
+            "best_model.pt"
+
+        )
+
+    ####################################################
+
+    def save_epoch_model(
+
+        self,
+        epoch
+
+    ):
+
+        torch.save(
+
+            self.model.state_dict(),
+
+            "models/Production/Epochs/"
+            f"epoch_{epoch}.pt"
+
+        )
+
+    ####################################################
+
+    def save_optimizer(
+
+        self
+
+    ):
+
+        torch.save(
+
+            self.optimizer.state_dict(),
+
+            "models/Production/"
+            "optimizer.pt"
+
+        )
+
+    ####################################################
+
+    def save_scheduler(
+
+        self
+
+    ):
+
+        torch.save(
+
+            self.scheduler.state_dict(),
+
+            "models/Production/"
+            "scheduler.pt"
+
+        )
+
+    ####################################################
 
     def save_checkpoint(
 
@@ -217,8 +585,9 @@ class Trainer:
 
         path = (
 
-            "models/checkpoints/"
-            f"checkpoint_epoch_{epoch}.pt"
+            "models/Production/"
+            "Checkpoints/"
+            f"checkpoint_{epoch}.pt"
 
         )
 
@@ -229,15 +598,19 @@ class Trainer:
                 "epoch":epoch,
 
                 "model":
+
                 self.model.state_dict(),
 
                 "optimizer":
+
                 self.optimizer.state_dict(),
 
                 "scheduler":
+
                 self.scheduler.state_dict(),
 
                 "best_loss":
+
                 self.best_loss,
 
             },
@@ -246,19 +619,7 @@ class Trainer:
 
         )
 
-        print()
-
-        print(
-
-            f"Checkpoint Saved :"
-
-        )
-
-        print(path)
-
-        print()
-
-    ##################################################
+    ####################################################
 
     def update_latest(
 
@@ -269,7 +630,8 @@ class Trainer:
 
         path = (
 
-            "models/checkpoints/"
+            "models/Production/"
+            "Checkpoints/"
             "latest.pt"
 
         )
@@ -281,15 +643,19 @@ class Trainer:
                 "epoch":epoch,
 
                 "model":
+
                 self.model.state_dict(),
 
                 "optimizer":
+
                 self.optimizer.state_dict(),
 
                 "scheduler":
+
                 self.scheduler.state_dict(),
 
                 "best_loss":
+
                 self.best_loss,
 
             },
@@ -298,7 +664,7 @@ class Trainer:
 
         )
 
-    ##################################################
+    ####################################################
 
     def load_checkpoint(
 
@@ -308,16 +674,13 @@ class Trainer:
 
         path = (
 
-            "models/checkpoints/"
+            "models/Production/"
+            "Checkpoints/"
             "latest.pt"
 
         )
 
-        if not os.path.exists(
-
-            path
-
-        ):
+        if not os.path.exists(path):
 
             return
 
@@ -325,7 +688,7 @@ class Trainer:
 
             path,
 
-            map_location=self.device,
+            map_location=self.device
 
         )
 
@@ -359,25 +722,9 @@ class Trainer:
 
         )
 
-        print()
+    ####################################################
 
-        print("="*60)
-
-        print(
-
-            "Resuming From Epoch :",
-
-            self.start_epoch
-
-        )
-
-        print("="*60)
-
-        print()
-
-    ##################################################
-
-    def save_best_model(
+    def save_history(
 
         self
 
@@ -385,31 +732,203 @@ class Trainer:
 
         path = (
 
-            "models/"
-            "best_model.pt"
+            "models/Production/"
+            "training_history.csv"
 
         )
 
-        torch.save(
+        with open(
 
-            self.model.state_dict(),
+            path,
 
-            path
+            "w",
 
-        )
+            newline=""
 
-    ##################################################
+        ) as file:
+
+            writer = csv.writer(
+
+                file
+
+            )
+
+            writer.writerow(
+
+                [
+
+                    "Epoch",
+
+                    "Train Loss",
+
+                    "Validation Loss",
+
+                    "Learning Rate",
+
+                    "Time"
+
+                ]
+
+            )
+
+            writer.writerows(
+
+                self.training_history
+
+            )
+
+    ####################################################
+
+    def save_gpu_information(
+
+        self
+
+    ):
+
+        data = {
+
+            "device":
+
+            str(self.device),
+
+        }
+
+        if torch.cuda.is_available():
+
+            data["gpu_name"] = (
+
+                torch.cuda.get_device_name(
+
+                    0
+
+                )
+
+            )
+
+            data["gpu_memory"] = (
+
+                round(
+
+                    torch.cuda.
+                    get_device_properties(
+                        0
+                    ).total_memory
+
+                    /
+
+                    1024**3,
+
+                    2
+
+                )
+
+            )
+
+        with open(
+
+            "models/Production/"
+            "gpu_information.json",
+
+            "w"
+
+        ) as file:
+
+            json.dump(
+
+                data,
+
+                file,
+
+                indent=4
+
+            )
+
+    ####################################################
+
+    def save_training_configuration(
+
+        self
+
+    ):
+
+        data = {
+
+            "learning_rate":self.lr,
+            "batch_size":self.batch_size,
+            "workers":self.workers,
+            "validation_split":self.validation_split,
+            "checkpoint_interval":self.checkpoint_interval,
+            "early_stop":self.early_stop_patience,
+
+        }
+
+        with open(
+
+            "models/Production/"
+            "training_configuration.json",
+
+            "w"
+
+        ) as file:
+
+            json.dump(
+
+                data,
+
+                file,
+
+                indent=4
+
+            )
+
+    ####################################################
+
+    def save_dataset_information(
+
+        self,
+        total,
+        train,
+        validation
+
+    ):
+
+        data = {
+
+            "total_samples":total,
+            "training":train,
+            "validation":validation,
+
+        }
+
+        with open(
+
+            "models/Production/"
+            "dataset_information.json",
+
+            "w"
+
+        ) as file:
+
+            json.dump(
+
+                data,
+
+                file,
+
+                indent=4
+
+            )
+
+    ####################################################
 
     def train(
 
         self,
-        epochs=20
+        epochs=200
 
     ):
 
         self.model.train()
-
-        ##################################################
 
         for epoch in range(
 
@@ -418,17 +937,15 @@ class Trainer:
 
         ):
 
-            total_loss = 0.0
+            start = time.time()
 
-            batch_count = 0
+            total_loss = 0
 
-            ##################################################
+            batches = 0
 
             for x,y in self.loader:
 
                 try:
-
-                    ##########################################
 
                     x = x.to(
 
@@ -437,16 +954,6 @@ class Trainer:
                         non_blocking=True
 
                     )
-
-                    ##########################################
-
-                    if self.has_nan(x):
-
-                        continue
-
-                    ##########################################
-
-                    skip_batch = False
 
                     for key in y:
 
@@ -458,20 +965,30 @@ class Trainer:
 
                         )
 
-                        if self.has_nan(
-
-                            y[key]
-
-                        ):
-
-                            skip_batch = True
-                            break
-
-                    if skip_batch:
+                    if self.has_nan(x):
 
                         continue
 
-                    ##########################################
+                    outputs = self.model(x)
+
+                    loss = self.calculate_loss(
+
+                        outputs,
+                        y
+
+                    )
+
+                    if (
+
+                        torch.isnan(loss)
+
+                        or
+
+                        torch.isinf(loss)
+
+                    ):
+
+                        continue
 
                     self.optimizer.zero_grad(
 
@@ -479,96 +996,17 @@ class Trainer:
 
                     )
 
-                    ##########################################
-
-                    outputs = self.model(
-
-                        x
-
-                    )
-
-                    ##########################################
-
-                    loss = 0
-
-                    loss += self.ce(
-
-                        outputs["direction"],
-                        y["direction"]
-
-                    )
-
-                    loss += self.ce(
-
-                        outputs["reversal"],
-                        y["reversal"]
-
-                    )
-
-                    loss += self.ce(
-
-                        outputs["market_regime"],
-                        y["market_regime"]
-
-                    )
-
-                    loss += self.mse(
-
-                        outputs["confidence"].squeeze(),
-                        y["confidence"]
-
-                    )
-
-                    loss += self.mse(
-
-                        outputs["volatility"].squeeze(),
-                        y["volatility"]
-
-                    )
-
-                    loss += self.mse(
-
-                        outputs["take_profit"].squeeze(),
-                        y["take_profit"]
-
-                    )
-
-                    loss += self.mse(
-
-                        outputs["stop_loss"].squeeze(),
-                        y["stop_loss"]
-
-                    )
-
-                    ##########################################
-
-                    if torch.isnan(loss):
-
-                        continue
-
-                    if torch.isinf(loss):
-
-                        continue
-
-                    ##########################################
-
                     loss.backward()
-
-                    ##########################################
 
                     torch.nn.utils.clip_grad_norm_(
 
                         self.model.parameters(),
 
-                        max_norm=1.0
+                        1.0
 
                     )
 
-                    ##########################################
-
                     self.optimizer.step()
-
-                    ##########################################
 
                     total_loss += (
 
@@ -576,89 +1014,37 @@ class Trainer:
 
                     )
 
-                    batch_count += 1
+                    batches += 1
 
-                ##################################################
-
-                except torch.cuda.OutOfMemoryError:
-
-                    print(
-
-                        "\nCUDA OOM DETECTED"
-
-                    )
+                except Exception:
 
                     self.clear_gpu()
 
                     continue
 
-                ##################################################
-
-                except RuntimeError as error:
-
-                    if (
-
-                        "out of memory"
-
-                        in
-
-                        str(
-                            error
-                        ).lower()
-
-                    ):
-
-                        print(
-
-                            "\nCUDA OOM DETECTED"
-
-                        )
-
-                        self.clear_gpu()
-
-                        continue
-
-                    raise error
-
-                ##################################################
-
-                except Exception as error:
-
-                    print(
-
-                        "\nERROR :",
-
-                        error
-
-                    )
-
-                    continue
-
-            ##################################################
-
-            if batch_count == 0:
-
-                print(
-
-                    f"Epoch {epoch+1} Failed."
-
-                )
+            if batches == 0:
 
                 continue
 
-            ##################################################
+            train_loss = (
 
-            epoch_loss = (
+                total_loss /
 
-                total_loss
-
-                /
-
-                batch_count
+                batches
 
             )
 
-            ##################################################
+            validation_loss = (
+
+                self.validate()
+
+            )
+
+            self.scheduler.step(
+
+                validation_loss
+
+            )
 
             current_lr = (
 
@@ -667,39 +1053,25 @@ class Trainer:
 
             )
 
-            ##################################################
-
             print(
 
                 f"Epoch "
 
                 f"{epoch+1}/{epochs}"
 
-                f"    Loss = "
+                f"    Loss={train_loss:.6f}"
 
-                f"{epoch_loss:.6f}"
+                f"    Val={validation_loss:.6f}"
 
-                f"    LR = "
-
-                f"{current_lr:.8f}"
+                f"    LR={current_lr:.8f}"
 
             )
 
-            ##################################################
-
-            self.scheduler.step(
-
-                epoch_loss
-
-            )
-
-            ##################################################
-
-            if epoch_loss < self.best_loss:
+            if validation_loss < self.best_loss:
 
                 self.best_loss = (
 
-                    epoch_loss
+                    validation_loss
 
                 )
 
@@ -711,11 +1083,9 @@ class Trainer:
 
                 self.no_improvement += 1
 
-            ##################################################
-
             if (
 
-                (epoch + 1)
+                (epoch+1)
 
                 %
 
@@ -727,17 +1097,43 @@ class Trainer:
 
                 self.save_checkpoint(
 
-                    epoch + 1
+                    epoch+1
 
                 )
 
                 self.update_latest(
 
-                    epoch + 1
+                    epoch+1
 
                 )
 
-            ##################################################
+                self.save_epoch_model(
+
+                    epoch+1
+
+                )
+
+            elapsed = round(
+
+                time.time()-start,
+
+                2
+
+            )
+
+            self.training_history.append(
+
+                [
+
+                    epoch+1,
+                    train_loss,
+                    validation_loss,
+                    current_lr,
+                    elapsed
+
+                ]
+
+            )
 
             if (
 
@@ -749,22 +1145,17 @@ class Trainer:
 
             ):
 
-                print()
-
-                print("="*60)
                 print(
-                    "EARLY STOPPING ACTIVATED"
+
+                    "\nEARLY STOPPING.\n"
+
                 )
-                print("="*60)
-                print()
 
                 break
 
-            ##################################################
-
             self.clear_gpu()
 
-        ##################################################
+        ################################################
 
         torch.save(
 
@@ -774,22 +1165,17 @@ class Trainer:
 
         )
 
-        ##################################################
+        self.save_optimizer()
 
-        print()
+        self.save_scheduler()
 
+        self.save_history()
+
+        ################################################
+
+        print("\n")
         print("="*60)
-        print("MODEL SAVED")
+        print("FINAL MODEL SAVED")
         print(self.save_path)
         print("="*60)
-        print()
-
-    ##################################################
-
-    def get_device(
-
-        self
-
-    ):
-
-        return self.device
+        print("\n")
