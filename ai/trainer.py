@@ -151,26 +151,6 @@ class Trainer:
 
         ##################################################
 
-        self.history = {
-
-            "loss":[]
-
-        }
-
-        ##################################################
-
-        self.scaler = (
-
-            torch.cuda.amp.GradScaler(
-
-                enabled=torch.cuda.is_available()
-
-            )
-
-        )
-
-        ##################################################
-
         os.makedirs(
 
             "models",
@@ -195,20 +175,6 @@ class Trainer:
 
     ##################################################
 
-    def clear_gpu(
-
-        self
-
-    ):
-
-        gc.collect()
-
-        if torch.cuda.is_available():
-
-            torch.cuda.empty_cache()
-
-    ##################################################
-
     def has_nan(
 
         self,
@@ -225,6 +191,22 @@ class Trainer:
             torch.isinf(tensor).any()
 
         )
+
+    ##################################################
+
+    def clear_gpu(
+
+        self
+
+    ):
+
+        gc.collect()
+
+        if torch.cuda.is_available():
+
+            torch.cuda.empty_cache()
+
+            torch.cuda.ipc_collect()
 
     ##################################################
 
@@ -265,10 +247,6 @@ class Trainer:
 
                 self.best_loss,
 
-                "history":
-
-                self.history,
-
             },
 
             path
@@ -306,7 +284,6 @@ class Trainer:
 
             return
 
-
         checkpoint = torch.load(
 
             path,
@@ -315,13 +292,11 @@ class Trainer:
 
         )
 
-
         self.model.load_state_dict(
 
             checkpoint["model"]
 
         )
-
 
         self.optimizer.load_state_dict(
 
@@ -329,13 +304,11 @@ class Trainer:
 
         )
 
-
         self.scheduler.load_state_dict(
 
             checkpoint["scheduler"]
 
         )
-
 
         self.best_loss = (
 
@@ -343,31 +316,15 @@ class Trainer:
 
         )
 
-
         self.start_epoch = (
 
             checkpoint["epoch"]
 
         )
 
-
-        self.history = (
-
-            checkpoint.get(
-
-                "history",
-
-                {"loss":[]}
-
-            )
-
-        )
-
-
         print()
 
         print("="*60)
-
         print(
 
             "Resuming From Epoch :",
@@ -375,9 +332,7 @@ class Trainer:
             self.start_epoch
 
         )
-
         print("="*60)
-
         print()
 
     ##################################################
@@ -418,10 +373,6 @@ class Trainer:
 
                 self.best_loss,
 
-                "history":
-
-                self.history,
-
             },
 
             path
@@ -456,9 +407,9 @@ class Trainer:
 
             for x,y in self.loader:
 
-                ##################################################
-
                 try:
+
+                    ##########################################
 
                     x = x.to(
 
@@ -468,164 +419,158 @@ class Trainer:
 
                     )
 
-                except RuntimeError:
+                    ##########################################
 
-                    continue
-
-                ##################################################
-
-                if self.has_nan(x):
-
-                    continue
-
-                ##################################################
-
-                skip_batch = False
-
-                for key in y:
-
-                    y[key] = y[key].to(
-
-                        self.device,
-
-                        non_blocking=True
-
-                    )
-
-                    if self.has_nan(
-
-                        y[key]
-
-                    ):
-
-                        skip_batch = True
-                        break
-
-                if skip_batch:
-
-                    continue
-
-                ##################################################
-
-                self.optimizer.zero_grad(
-
-                    set_to_none=True
-
-                )
-
-                ##################################################
-
-                try:
-
-                    with torch.cuda.amp.autocast(
-
-                        enabled=torch.cuda.is_available()
-
-                    ):
-
-                        outputs = self.model(
-
-                            x
-
-                        )
-
-                        ######################################
-
-                        loss = 0
-
-                        loss += self.ce(
-
-                            outputs["direction"],
-
-                            y["direction"]
-
-                        )
-
-                        loss += self.ce(
-
-                            outputs["reversal"],
-
-                            y["reversal"]
-
-                        )
-
-                        loss += self.ce(
-
-                            outputs["market_regime"],
-
-                            y["market_regime"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["confidence"].squeeze(),
-
-                            y["confidence"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["volatility"].squeeze(),
-
-                            y["volatility"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["take_profit"].squeeze(),
-
-                            y["take_profit"]
-
-                        )
-
-                        loss += self.mse(
-
-                            outputs["stop_loss"].squeeze(),
-
-                            y["stop_loss"]
-
-                        )
-
-                except RuntimeError as error:
-
-                    if "out of memory" in str(error):
-
-                        print(
-
-                            "\nCUDA OOM -> Batch Skipped"
-
-                        )
-
-                        self.clear_gpu()
+                    if self.has_nan(x):
 
                         continue
 
-                    continue
+                    ##########################################
+
+                    skip_batch = False
+
+                    for key in y:
+
+                        y[key] = y[key].to(
+
+                            self.device,
+
+                            non_blocking=True
+
+                        )
+
+                        if self.has_nan(
+
+                            y[key]
+
+                        ):
+
+                            skip_batch = True
+                            break
+
+                    if skip_batch:
+
+                        continue
+
+                    ##########################################
+
+                    self.optimizer.zero_grad(
+
+                        set_to_none=True
+
+                    )
+
+                    ##########################################
+
+                    outputs = self.model(
+
+                        x
+
+                    )
+
+                    ##########################################
+
+                    loss = 0
+
+                    loss += self.ce(
+
+                        outputs["direction"],
+
+                        y["direction"]
+
+                    )
+
+                    loss += self.ce(
+
+                        outputs["reversal"],
+
+                        y["reversal"]
+
+                    )
+
+                    loss += self.ce(
+
+                        outputs["market_regime"],
+
+                        y["market_regime"]
+
+                    )
+
+                    loss += self.mse(
+
+                        outputs["confidence"].squeeze(),
+
+                        y["confidence"]
+
+                    )
+
+                    loss += self.mse(
+
+                        outputs["volatility"].squeeze(),
+
+                        y["volatility"]
+
+                    )
+
+                    loss += self.mse(
+
+                        outputs["take_profit"].squeeze(),
+
+                        y["take_profit"]
+
+                    )
+
+                    loss += self.mse(
+
+                        outputs["stop_loss"].squeeze(),
+
+                        y["stop_loss"]
+
+                    )
+
+                    ##########################################
+
+                    if torch.isnan(loss):
+
+                        continue
+
+                    if torch.isinf(loss):
+
+                        continue
+
+                    ##########################################
+
+                    loss.backward()
+
+                    ##########################################
+
+                    torch.nn.utils.clip_grad_norm_(
+
+                        self.model.parameters(),
+
+                        max_norm=1.0
+
+                    )
+
+                    ##########################################
+
+                    self.optimizer.step()
+
+                    ##########################################
+
+                    total_loss += loss.item()
+
+                    batch_count += 1
 
                 ##################################################
 
-                if torch.isnan(loss):
+                except torch.cuda.OutOfMemoryError:
 
-                    continue
+                    print(
 
-                if torch.isinf(loss):
+                        "\nCUDA OOM DETECTED"
 
-                    continue
-
-                ##################################################
-
-                try:
-
-                    self.scaler.scale(
-
-                        loss
-
-                    ).backward()
-
-                except RuntimeError:
+                    )
 
                     self.clear_gpu()
 
@@ -633,33 +578,35 @@ class Trainer:
 
                 ##################################################
 
-                torch.nn.utils.clip_grad_norm_(
+                except RuntimeError as error:
 
-                    self.model.parameters(),
+                    if (
 
-                    max_norm=1.0
+                        "out of memory"
 
-                )
+                        in
+
+                        str(error).lower()
+
+                    ):
+
+                        print(
+
+                            "\nCUDA OOM DETECTED"
+
+                        )
+
+                        self.clear_gpu()
+
+                        continue
+
+                    raise error
 
                 ##################################################
 
-                self.scaler.step(
+                except Exception:
 
-                    self.optimizer
-
-                )
-
-                self.scaler.update()
-
-                ##################################################
-
-                total_loss += (
-
-                    loss.item()
-
-                )
-
-                batch_count += 1
+                    continue
 
             ##################################################
 
@@ -667,9 +614,7 @@ class Trainer:
 
                 print(
 
-                    f"Epoch "
-
-                    f"{epoch+1} Failed."
+                    f"Epoch {epoch+1} Failed."
 
                 )
 
@@ -684,14 +629,6 @@ class Trainer:
                 /
 
                 batch_count
-
-            )
-
-            ##################################################
-
-            self.history["loss"].append(
-
-                epoch_loss
 
             )
 
@@ -737,7 +674,7 @@ class Trainer:
 
             if (
 
-                (epoch+1)
+                (epoch + 1)
 
                 %
 
@@ -749,13 +686,13 @@ class Trainer:
 
                 self.save_checkpoint(
 
-                    epoch+1
+                    epoch + 1
 
                 )
 
                 self.update_latest(
 
-                    epoch+1
+                    epoch + 1
 
                 )
 
@@ -804,16 +741,6 @@ class Trainer:
         print(self.save_path)
         print("=" * 60)
         print("\n")
-
-    ##################################################
-
-    def get_history(
-
-        self
-
-    ):
-
-        return self.history
 
     ##################################################
 
