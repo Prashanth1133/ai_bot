@@ -8,7 +8,6 @@ import time
 import torch
 import torch.nn as nn
 
-from datetime import datetime
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 
@@ -73,19 +72,19 @@ class Trainer:
 
             if total_memory >= 24:
 
-                batch_size = 1024
+                batch_size = 512
 
             elif total_memory >= 16:
 
-                batch_size = 512
+                batch_size = 256
 
             elif total_memory >= 12:
 
-                batch_size = 256
+                batch_size = 128
 
             else:
 
-                batch_size = 128
+                batch_size = 64
 
             workers = 2
 
@@ -161,6 +160,14 @@ class Trainer:
 
         ####################################################
 
+        generator = torch.Generator()
+
+        generator.manual_seed(
+
+            42
+
+        )
+
         self.train_dataset, self.validation_dataset = (
 
             random_split(
@@ -172,7 +179,9 @@ class Trainer:
                     train_size,
                     validation_size
 
-                ]
+                ],
+
+                generator=generator
 
             )
 
@@ -215,6 +224,8 @@ class Trainer:
         )
 
         ####################################################
+
+        self.original_model = model
 
         self.model = model.to(
 
@@ -386,7 +397,7 @@ class Trainer:
 
             for parameter in (
 
-                self.model.parameters()
+                self.original_model.parameters()
 
             ):
 
@@ -523,6 +534,12 @@ class Trainer:
 
                 x = x.to(self.device)
 
+                if self.has_nan(x):
+
+                    continue
+
+                skip = False
+
                 for key in y:
 
                     y[key] = y[key].to(
@@ -530,6 +547,20 @@ class Trainer:
                         self.device
 
                     )
+
+                    if self.has_nan(
+
+                            y[key]
+
+                    ):
+
+                        skip = True
+
+                        break
+
+                if skip:
+
+                    continue
 
                 outputs = self.model(x)
 
@@ -572,7 +603,7 @@ class Trainer:
 
         torch.save(
 
-            self.model.state_dict(),
+            self.original_model.state_dict(),
 
             "models/Production/"
             "best_model.pt"
@@ -590,7 +621,7 @@ class Trainer:
 
         torch.save(
 
-            self.model.state_dict(),
+            self.original_model.state_dict(),
 
             "models/Production/Epochs/"
             f"epoch_{epoch}.pt"
@@ -656,7 +687,7 @@ class Trainer:
 
                 "model":
 
-                self.model.state_dict(),
+                self.original_model.state_dict(),
 
                 "optimizer":
 
@@ -701,7 +732,7 @@ class Trainer:
 
                 "model":
 
-                self.model.state_dict(),
+                self.original_model.state_dict(),
 
                 "optimizer":
 
@@ -749,7 +780,7 @@ class Trainer:
 
         )
 
-        self.model.load_state_dict(
+        self.original_model.load_state_dict(
 
             checkpoint["model"]
 
@@ -1142,10 +1173,25 @@ class Trainer:
 
                         )
 
+                        self.optimizer.zero_grad(
+
+                            set_to_none=True
+
+                        )
+
                         continue
 
+                    ##################################################
 
-            ##################################################
+                    torch.nn.utils.clip_grad_norm_(
+
+                        self.original_model.parameters(),
+
+                        max_norm=1.0
+
+                    )
+
+                    ##################################################
 
                     self.optimizer.step()
 
@@ -1333,11 +1379,11 @@ class Trainer:
 
             )
 
-             if torch.cuda.is_available():
+            if torch.cuda.is_available():
 
-                        if (epoch+1)%5==0:
+                if (epoch + 1) % 5 == 0:
 
-                            self.clear_gpu()
+                    self.clear_gpu()
 
             if (
 
@@ -1363,7 +1409,7 @@ class Trainer:
 
         torch.save(
 
-            self.model.state_dict(),
+            self.original_model.state_dict(),
 
             self.save_path
 
