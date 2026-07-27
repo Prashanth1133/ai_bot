@@ -23,7 +23,7 @@ class Trainer:
         lr=1e-4,
         weight_decay=1e-5,
         checkpoint_interval=20,
-        early_stop_patience=25,
+        early_stop_patience=40,
         validation_split=0.15,
         resume=False,
     ):
@@ -41,6 +41,8 @@ class Trainer:
         self.checkpoint_interval = checkpoint_interval
 
         self.early_stop_patience = early_stop_patience
+
+        self.accumulation_steps = 4
 
         ####################################################
 
@@ -70,17 +72,25 @@ class Trainer:
 
             )
 
-            if total_memory >= 24:
+            if total_memory >= 40:
+
+                batch_size = 2048
+
+            elif total_memory >= 24:
 
                 batch_size = 1024
 
             elif total_memory >= 16:
 
-                batch_size = 512
+                batch_size = 768
 
             elif total_memory >= 12:
 
-                batch_size = 384
+                batch_size = 512
+
+            elif total_memory >= 8:
+
+                batch_size = 256
 
             else:
 
@@ -222,7 +232,7 @@ class Trainer:
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=4 if workers > 0 else None,
+            prefetch_factor=8 if workers > 0 else None,
 
         )
 
@@ -244,7 +254,7 @@ class Trainer:
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=4 if workers > 0 else None,
+            prefetch_factor=8 if workers > 0 else None,
 
         )
 
@@ -341,7 +351,7 @@ class Trainer:
 
                 factor=0.75,
 
-                patience=12,
+                patience=15,
 
             )
 
@@ -1017,6 +1027,7 @@ class Trainer:
             "validation_split":self.validation_split,
             "checkpoint_interval":self.checkpoint_interval,
             "early_stop":self.early_stop_patience,
+            "accumulation_steps":self.accumulation_steps,
 
         }
 
@@ -1123,11 +1134,13 @@ class Trainer:
 
                         )
 
-                    self.optimizer.zero_grad(
+                    if batches % self.accumulation_steps == 0:
 
-                        set_to_none=True
+                        self.optimizer.zero_grad(
 
-                    )
+                            set_to_none=True
+
+                        )
 
                     if self.scaler is not None:
 
@@ -1139,79 +1152,103 @@ class Trainer:
 
                             outputs = self.model(x)
 
-                            loss = self.calculate_loss(
+                            raw_loss = self.calculate_loss(
 
                                 outputs,
                                 y
 
                             )
 
+                            accumulated_loss = raw_loss / self.accumulation_steps
+
                         if (
 
-                            torch.isnan(loss)
+                            torch.isnan(raw_loss)
 
                             or
 
-                            torch.isinf(loss)
+                            torch.isinf(raw_loss)
 
                         ):
 
                             continue
 
-                        self.scaler.scale(loss).backward()
+                        self.scaler.scale(accumulated_loss).backward()
 
-                        self.scaler.unscale_(self.optimizer)
+                        if (
 
-                        torch.nn.utils.clip_grad_norm_(
+                            (batches + 1)
 
-                            self.model.parameters(),
+                            %
 
-                            max_norm=1.0
+                            self.accumulation_steps == 0
 
-                        )
+                        ):
 
-                        self.scaler.step(self.optimizer)
+                            self.scaler.unscale_(self.optimizer)
 
-                        self.scaler.update()
+                            torch.nn.utils.clip_grad_norm_(
+
+                                self.model.parameters(),
+
+                                max_norm=1.0
+
+                            )
+
+                            self.scaler.step(self.optimizer)
+
+                            self.scaler.update()
 
                     else:
 
                         outputs = self.model(x)
 
-                        loss = self.calculate_loss(
+                        raw_loss = self.calculate_loss(
 
                             outputs,
                             y
 
                         )
 
+                        accumulated_loss = raw_loss / self.accumulation_steps
+
                         if (
 
-                            torch.isnan(loss)
+                            torch.isnan(raw_loss)
 
                             or
 
-                            torch.isinf(loss)
+                            torch.isinf(raw_loss)
 
                         ):
 
                             continue
 
-                        loss.backward()
+                        accumulated_loss.backward()
 
-                        torch.nn.utils.clip_grad_norm_(
+                        if (
 
-                            self.model.parameters(),
+                            (batches + 1)
 
-                            max_norm=1.0
+                            %
 
-                        )
+                            self.accumulation_steps == 0
 
-                        self.optimizer.step()
+                        ):
+
+                            torch.nn.utils.clip_grad_norm_(
+
+                                self.model.parameters(),
+
+                                max_norm=1.0
+
+                            )
+
+                            self.optimizer.step()
 
                     total_loss += (
 
-                        loss.item()
+                        raw_loss.item()
 
                     )
 
