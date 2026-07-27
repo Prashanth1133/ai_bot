@@ -317,6 +317,19 @@ class Trainer:
 
         ####################################################
 
+
+        ####################################################
+
+        self.best_epoch = 0
+
+        self.best_validation_loss = float(
+
+            "inf"
+
+        )
+
+        ####################################################
+
         self.save_dataset_information(
 
             total_size,
@@ -359,6 +372,50 @@ class Trainer:
             ).any()
 
         )
+
+    ####################################################
+
+    ####################################################
+
+    def gradient_exploded(
+
+            self
+
+    ):
+
+
+            for parameter in (
+
+                self.model.parameters()
+
+            ):
+
+
+                if parameter.grad is None:
+
+                    continue
+
+
+                if torch.isnan(
+
+                    parameter.grad
+
+                ).any():
+
+                    return True
+
+
+                if torch.isinf(
+
+                    parameter.grad
+
+                ).any():
+
+                    return True
+
+
+            return False
+
 
     ####################################################
 
@@ -776,6 +833,72 @@ class Trainer:
                 self.training_history
 
             )
+        
+    ####################################################
+
+    def save_best_information(
+
+        self
+
+    ):
+
+
+        data = {
+
+            "best_epoch":
+
+            self.best_epoch,
+
+
+            "best_validation_loss":
+
+            self.best_validation_loss,
+
+
+            "device":
+
+            str(
+
+                self.device
+
+            ),
+
+
+            "batch_size":
+
+            self.batch_size,
+
+
+            "learning_rate":
+
+            self.lr,
+
+
+        }
+
+
+        with open(
+
+            "models/Production/"
+            "best_model_information.json",
+
+            "w"
+
+        ) as file:
+
+
+            json.dump(
+
+                data,
+
+                file,
+
+                indent=4
+
+            )
+
+
+    ####################################################
 
     ####################################################
 
@@ -996,15 +1119,33 @@ class Trainer:
 
                     )
 
+                    # loss.backward()
+
+                    # torch.nn.utils.clip_grad_norm_(
+
+                    #     self.model.parameters(),
+
+                    #     1.0
+
+                    # )
+
                     loss.backward()
 
-                    torch.nn.utils.clip_grad_norm_(
 
-                        self.model.parameters(),
+            ##################################################
 
-                        1.0
+                    if self.gradient_exploded():
 
-                    )
+                        print(
+
+                            "Gradient Explosion Detected."
+
+                        )
+
+                        continue
+
+
+            ##################################################
 
                     self.optimizer.step()
 
@@ -1016,11 +1157,30 @@ class Trainer:
 
                     batches += 1
 
-                except Exception:
+                # except Exception:
+
+                except Exception as error:
+
+
+                    print(
+
+                        "\nERROR :",
+
+                        error
+
+                    )
+
 
                     self.clear_gpu()
 
+
                     continue
+
+                    # self.clear_gpu()
+
+                    # continue
+
+                   
 
             if batches == 0:
 
@@ -1067,7 +1227,24 @@ class Trainer:
 
             )
 
+            # if validation_loss < self.best_loss:
+
+            #     self.best_loss = (
+
+            #         validation_loss
+
+            #     )
+
+            #     self.no_improvement = 0
+
+            #     self.save_best_model()
+
+            # else:
+
+            #     self.no_improvement += 1
+
             if validation_loss < self.best_loss:
+
 
                 self.best_loss = (
 
@@ -1075,11 +1252,32 @@ class Trainer:
 
                 )
 
+
+                self.best_validation_loss = (
+
+                    validation_loss
+
+                )
+
+
+                self.best_epoch = (
+
+                    epoch+1
+
+                )
+
+
                 self.no_improvement = 0
+
 
                 self.save_best_model()
 
+
+                self.save_best_information()
+
+
             else:
+
 
                 self.no_improvement += 1
 
@@ -1135,6 +1333,12 @@ class Trainer:
 
             )
 
+             if torch.cuda.is_available():
+
+                        if (epoch+1)%5==0:
+
+                            self.clear_gpu()
+
             if (
 
                 self.no_improvement
@@ -1176,6 +1380,28 @@ class Trainer:
         print("\n")
         print("="*60)
         print("FINAL MODEL SAVED")
+        print(
+
+            "BEST MODEL :",
+
+            self.best_epoch
+
+        )
+
+
+        print(
+
+            "BEST VALIDATION LOSS :",
+
+            round(
+
+                self.best_validation_loss,
+
+                6
+
+            )
+
+        )
         print(self.save_path)
         print("="*60)
         print("\n")
