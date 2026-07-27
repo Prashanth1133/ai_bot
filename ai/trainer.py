@@ -72,19 +72,19 @@ class Trainer:
 
             if total_memory >= 24:
 
-                batch_size = 512
+                batch_size = 1024
 
             elif total_memory >= 16:
 
-                batch_size = 256
+                batch_size = 512
 
             elif total_memory >= 12:
 
-                batch_size = 128
+                batch_size = 256
 
             else:
 
-                batch_size = 64
+                batch_size = 128
 
             workers = 2
 
@@ -114,6 +114,23 @@ class Trainer:
         print("=" * 60)
         print("Using Device :", self.device)
         print("Batch Size :", batch_size)
+        if torch.cuda.is_available():
+            print(
+                "GPU :",
+                torch.cuda.get_device_name(
+                    0
+                )
+            )
+            print(
+                "GPU MEMORY :",
+                round(
+                    torch.cuda.get_device_properties(
+                        0
+                    ).total_memory / (1024 ** 3),
+                    2
+                ),
+                "GB"
+            )
         print("=" * 60)
         print("\n")
 
@@ -201,7 +218,11 @@ class Trainer:
 
             num_workers=workers,
 
-            drop_last=False,
+            drop_last=True,
+
+            persistent_workers=(workers > 0),
+
+            prefetch_factor=4 if workers > 0 else None,
 
         )
 
@@ -221,6 +242,10 @@ class Trainer:
 
             drop_last=False,
 
+            persistent_workers=(workers > 0),
+
+            prefetch_factor=4 if workers > 0 else None,
+
         )
 
         ####################################################
@@ -232,6 +257,24 @@ class Trainer:
             self.device
 
         )
+
+        ####################################################
+
+        if torch.cuda.is_available():
+
+            torch.backends.cudnn.benchmark = True
+
+            torch.backends.cuda.matmul.allow_tf32 = True
+
+            torch.backends.cudnn.allow_tf32 = True
+
+            if hasattr(torch, "set_float32_matmul_precision"):
+
+                torch.set_float32_matmul_precision(
+
+                    "high"
+
+                )
 
         ####################################################
 
@@ -298,11 +341,19 @@ class Trainer:
 
                 factor=0.50,
 
-                patience=5,
+                patience=10,
 
             )
 
         )
+
+        ####################################################
+
+        self.scaler = None
+
+        if torch.cuda.is_available():
+
+            self.scaler = torch.cuda.amp.GradScaler()
 
         ####################################################
 
@@ -383,53 +434,6 @@ class Trainer:
             ).any()
 
         )
-
-    ####################################################
-
-    ####################################################
-
-    def gradient_exploded(
-
-            self
-
-    ):
-
-
-            for parameter in (
-
-                self.original_model.parameters()
-
-            ):
-
-
-                if parameter.grad is None:
-
-                    continue
-
-
-                if torch.isnan(
-
-                    parameter.grad
-
-                ).any():
-
-                    return True
-
-
-                if torch.isinf(
-
-                    parameter.grad
-
-                ).any():
-
-                    return True
-
-
-            return False
-
-
-    ####################################################
-
     def clear_gpu(
 
         self
@@ -534,33 +538,15 @@ class Trainer:
 
                 x = x.to(self.device)
 
-                if self.has_nan(x):
-
-                    continue
-
-                skip = False
-
                 for key in y:
 
-                    y[key] = y[key].to(
+                    if y[key].device != self.device:
 
-                        self.device
+                        y[key] = y[key].to(
 
-                    )
+                            self.device
 
-                    if self.has_nan(
-
-                            y[key]
-
-                    ):
-
-                        skip = True
-
-                        break
-
-                if skip:
-
-                    continue
+                        )
 
                 outputs = self.model(x)
 
@@ -570,6 +556,14 @@ class Trainer:
                     y
 
                 )
+
+                if torch.isnan(loss):
+
+                    continue
+
+                if torch.isinf(loss):
+
+                    continue
 
                 total_loss += (
 
@@ -1111,38 +1105,15 @@ class Trainer:
 
                     for key in y:
 
-                        y[key] = y[key].to(
+                        if y[key].device != self.device:
 
-                            self.device,
+                            y[key] = y[key].to(
 
-                            non_blocking=True
+                                self.device,
 
-                        )
+                                non_blocking=True
 
-                    if self.has_nan(x):
-
-                        continue
-
-                    outputs = self.model(x)
-
-                    loss = self.calculate_loss(
-
-                        outputs,
-                        y
-
-                    )
-
-                    if (
-
-                        torch.isnan(loss)
-
-                        or
-
-                        torch.isinf(loss)
-
-                    ):
-
-                        continue
+                            )
 
                     self.optimizer.zero_grad(
 
@@ -1150,50 +1121,81 @@ class Trainer:
 
                     )
 
-                    # loss.backward()
+                    if self.scaler is not None:
 
-                    # torch.nn.utils.clip_grad_norm_(
+                        with torch.cuda.amp.autocast():
 
-                    #     self.model.parameters(),
+                            outputs = self.model(x)
 
-                    #     1.0
+                            loss = self.calculate_loss(
 
-                    # )
+                                outputs,
+                                y
 
-                    loss.backward()
+                            )
 
+                        if (
 
-            ##################################################
+                            torch.isnan(loss)
 
-                    if self.gradient_exploded():
+                            or
 
-                        print(
+                            torch.isinf(loss)
 
-                            "Gradient Explosion Detected."
+                        ):
+
+                            continue
+
+                        self.scaler.scale(loss).backward()
+
+                        self.scaler.unscale_(self.optimizer)
+
+                        torch.nn.utils.clip_grad_norm_(
+
+                            self.original_model.parameters(),
+
+                            max_norm=1.0
 
                         )
 
-                        self.optimizer.zero_grad(
+                        self.scaler.step(self.optimizer)
 
-                            set_to_none=True
+                        self.scaler.update()
+
+                    else:
+
+                        outputs = self.model(x)
+
+                        loss = self.calculate_loss(
+
+                            outputs,
+                            y
 
                         )
 
-                        continue
+                        if (
 
-                    ##################################################
+                            torch.isnan(loss)
 
-                    torch.nn.utils.clip_grad_norm_(
+                            or
 
-                        self.original_model.parameters(),
+                            torch.isinf(loss)
 
-                        max_norm=1.0
+                        ):
 
-                    )
+                            continue
 
-                    ##################################################
+                        loss.backward()
 
-                    self.optimizer.step()
+                        torch.nn.utils.clip_grad_norm_(
+
+                            self.original_model.parameters(),
+
+                            max_norm=1.0
+
+                        )
+
+                        self.optimizer.step()
 
                     total_loss += (
 
@@ -1240,11 +1242,25 @@ class Trainer:
 
             )
 
-            validation_loss = (
+            if (
 
-                self.validate()
+                (epoch + 1) % 5 == 0
 
-            )
+                or
+
+                epoch == 0
+
+            ):
+
+                validation_loss = (
+
+                    self.validate()
+
+                )
+
+            else:
+
+                validation_loss = train_loss
 
             self.scheduler.step(
 
@@ -1381,7 +1397,7 @@ class Trainer:
 
             if torch.cuda.is_available():
 
-                if (epoch + 1) % 5 == 0:
+                if (epoch + 1) % 25 == 0:
 
                     self.clear_gpu()
 
@@ -1402,8 +1418,6 @@ class Trainer:
                 )
 
                 break
-
-            self.clear_gpu()
 
         ################################################
 
