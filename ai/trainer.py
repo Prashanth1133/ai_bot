@@ -22,7 +22,7 @@ class Trainer:
         batch_size=64,
         lr=1e-4,
         weight_decay=1e-5,
-        checkpoint_interval=20,
+        checkpoint_interval=5,
         early_stop_patience=40,
         validation_split=0.15,
         resume=False,
