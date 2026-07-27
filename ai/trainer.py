@@ -42,7 +42,7 @@ class Trainer:
 
         self.early_stop_patience = early_stop_patience
 
-        self.accumulation_steps = 1
+        self.accumulation_steps = 2
 
         ####################################################
 
