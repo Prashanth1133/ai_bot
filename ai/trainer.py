@@ -80,7 +80,7 @@ class Trainer:
 
             elif total_memory >= 12:
 
-                batch_size = 256
+                batch_size = 384
 
             else:
 
@@ -339,9 +339,9 @@ class Trainer:
 
                 mode="min",
 
-                factor=0.50,
+                factor=0.75,
 
-                patience=10,
+                patience=12,
 
             )
 
@@ -353,7 +353,11 @@ class Trainer:
 
         if torch.cuda.is_available():
 
-            self.scaler = torch.cuda.amp.GradScaler()
+            self.scaler = torch.amp.GradScaler(
+
+                "cuda"
+
+            )
 
         ####################################################
 
@@ -385,6 +389,12 @@ class Trainer:
         self.best_epoch = 0
 
         self.best_validation_loss = float(
+
+            "inf"
+
+        )
+
+        self.previous_validation_loss = float(
 
             "inf"
 
@@ -540,13 +550,13 @@ class Trainer:
 
                 for key in y:
 
-                    if y[key].device != self.device:
+                    y[key] = y[key].to(
 
-                        y[key] = y[key].to(
+                        self.device,
 
-                            self.device
+                        non_blocking=True
 
-                        )
+                    )
 
                 outputs = self.model(x)
 
@@ -1105,15 +1115,13 @@ class Trainer:
 
                     for key in y:
 
-                        if y[key].device != self.device:
+                        y[key] = y[key].to(
 
-                            y[key] = y[key].to(
+                            self.device,
 
-                                self.device,
+                            non_blocking=True
 
-                                non_blocking=True
-
-                            )
+                        )
 
                     self.optimizer.zero_grad(
 
@@ -1123,7 +1131,11 @@ class Trainer:
 
                     if self.scaler is not None:
 
-                        with torch.cuda.amp.autocast():
+                        with torch.amp.autocast(
+
+                            device_type="cuda"
+
+                        ):
 
                             outputs = self.model(x)
 
@@ -1152,7 +1164,7 @@ class Trainer:
 
                         torch.nn.utils.clip_grad_norm_(
 
-                            self.original_model.parameters(),
+                            self.model.parameters(),
 
                             max_norm=1.0
 
@@ -1189,7 +1201,7 @@ class Trainer:
 
                         torch.nn.utils.clip_grad_norm_(
 
-                            self.original_model.parameters(),
+                            self.model.parameters(),
 
                             max_norm=1.0
 
@@ -1258,9 +1270,11 @@ class Trainer:
 
                 )
 
+                self.previous_validation_loss = validation_loss
+
             else:
 
-                validation_loss = train_loss
+                validation_loss = self.previous_validation_loss
 
             self.scheduler.step(
 
