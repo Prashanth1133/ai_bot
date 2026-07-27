@@ -42,7 +42,7 @@ class Trainer:
 
         self.early_stop_patience = early_stop_patience
 
-        self.accumulation_steps = 4
+        self.accumulation_steps = 1
 
         ####################################################
 
@@ -72,29 +72,25 @@ class Trainer:
 
             )
 
-            if total_memory >= 40:
-
-                batch_size = 2048
-
-            elif total_memory >= 24:
-
-                batch_size = 1024
-
-            elif total_memory >= 16:
+            if total_memory >= 24:
 
                 batch_size = 768
 
-            elif total_memory >= 12:
+            elif total_memory >= 16:
 
                 batch_size = 512
 
-            elif total_memory >= 8:
+            elif total_memory >= 12:
 
                 batch_size = 256
 
-            else:
+            elif total_memory >= 8:
 
                 batch_size = 128
+
+            else:
+
+                batch_size = 64
 
             workers = 2
 
@@ -228,11 +224,11 @@ class Trainer:
 
             num_workers=workers,
 
-            drop_last=True,
+            drop_last=False,
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=8 if workers > 0 else None,
+            prefetch_factor=2 if workers > 0 else None,
 
         )
 
@@ -254,7 +250,7 @@ class Trainer:
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=8 if workers > 0 else None,
+            prefetch_factor=2 if workers > 0 else None,
 
         )
 
@@ -291,6 +287,10 @@ class Trainer:
         if (
 
             torch.cuda.is_available()
+
+            and
+
+            total_memory >= 40
 
             and
 
@@ -460,13 +460,9 @@ class Trainer:
 
     ):
 
-        gc.collect()
-
         if torch.cuda.is_available():
 
             torch.cuda.empty_cache()
-
-            torch.cuda.ipc_collect()
 
     ####################################################
 
@@ -1144,9 +1140,11 @@ class Trainer:
 
                     if self.scaler is not None:
 
-                        with torch.amp.autocast(
+                        with torch.autocast(
 
-                            device_type="cuda"
+                            device_type="cuda",
+
+                            dtype=torch.float16
 
                         ):
 
@@ -1291,15 +1289,7 @@ class Trainer:
 
             )
 
-            if (
-
-                (epoch + 1) % 5 == 0
-
-                or
-
-                epoch == 0
-
-            ):
+            if epoch == 0 or (epoch + 1) % 10 == 0:
 
                 validation_loss = (
 
@@ -1448,7 +1438,7 @@ class Trainer:
 
             if torch.cuda.is_available():
 
-                if (epoch + 1) % 25 == 0:
+                if (epoch + 1) % 50 == 0:
 
                     self.clear_gpu()
 
