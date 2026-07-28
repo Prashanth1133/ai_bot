@@ -5,6 +5,8 @@ import gc
 import csv
 import json
 import time
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -14,21 +16,77 @@ from torch.utils.data import random_split
 
 class Trainer:
 
-    def __init__(
+    def auto_seed(
+
         self,
+
+        seed=42
+
+    ):
+
+        random.seed(
+            seed
+        )
+
+        np.random.seed(
+            seed
+        )
+
+        torch.manual_seed(
+            seed
+        )
+
+        if torch.cuda.is_available():
+
+            torch.cuda.manual_seed(
+                seed
+            )
+
+            torch.cuda.manual_seed_all(
+                seed
+            )
+
+            torch.backends.cudnn.deterministic = True
+
+    ####################################################
+
+    def __init__(
+
+        self,
+
         model,
+
         dataset,
+
         save_path="models/Production/production_v1.pt",
+
         batch_size=64,
+
         lr=1e-4,
+
         weight_decay=1e-5,
+
         checkpoint_interval=20,
+
+        epoch_interval=10,
+
         early_stop_patience=25,
+
         validation_split=0.15,
+
         resume=False,
+
+        drive_path=None,
+
+        seed=42,
+
     ):
 
         ####################################################
+
+        self.auto_seed(
+            seed
+        )
 
         self.resume = resume
 
@@ -40,7 +98,55 @@ class Trainer:
 
         self.checkpoint_interval = checkpoint_interval
 
+        self.epoch_interval = epoch_interval
+
         self.early_stop_patience = early_stop_patience
+
+        self.drive_path = drive_path
+
+        ####################################################
+
+        if drive_path:
+
+            self.production_dir = (
+
+                drive_path +
+
+                "/Production"
+
+            )
+
+        else:
+
+            self.production_dir = (
+
+                "models/Production"
+
+            )
+
+        ####################################################
+
+        if (
+
+            save_path is None
+
+            or
+
+            save_path == "models/Production/production_v1.pt"
+
+        ):
+
+            self.save_path = (
+
+                self.production_dir +
+
+                "/production_v1.pt"
+
+            )
+
+        else:
+
+            self.save_path = save_path
 
         ####################################################
 
@@ -114,29 +220,39 @@ class Trainer:
         print("=" * 60)
         print("Using Device :", self.device)
         print("Batch Size :", batch_size)
+        print("Production Dir :", self.production_dir)
         print("=" * 60)
         print("\n")
 
         ####################################################
 
         os.makedirs(
-            "models/Production",
+
+            self.production_dir,
+
             exist_ok=True
+
         )
 
         os.makedirs(
-            "models/Production/Epochs",
+
+            self.production_dir +
+
+            "/Epochs",
+
             exist_ok=True
+
         )
 
         os.makedirs(
-            "models/Production/Checkpoints",
+
+            self.production_dir +
+
+            "/Checkpoints",
+
             exist_ok=True
+
         )
-
-        ####################################################
-
-        self.save_path = save_path
 
         ####################################################
 
@@ -164,7 +280,7 @@ class Trainer:
 
         generator.manual_seed(
 
-            42
+            seed
 
         )
 
@@ -328,9 +444,6 @@ class Trainer:
 
         ####################################################
 
-
-        ####################################################
-
         self.best_epoch = 0
 
         self.best_validation_loss = float(
@@ -386,47 +499,39 @@ class Trainer:
 
     ####################################################
 
-    ####################################################
-
     def gradient_exploded(
 
-            self
+        self
 
     ):
 
+        for parameter in (
 
-            for parameter in (
+            self.original_model.parameters()
 
-                self.original_model.parameters()
+        ):
 
-            ):
+            if parameter.grad is None:
 
+                continue
 
-                if parameter.grad is None:
+            if torch.isnan(
 
-                    continue
+                parameter.grad
 
+            ).any():
 
-                if torch.isnan(
+                return True
 
-                    parameter.grad
+            if torch.isinf(
 
-                ).any():
+                parameter.grad
 
-                    return True
+            ).any():
 
+                return True
 
-                if torch.isinf(
-
-                    parameter.grad
-
-                ).any():
-
-                    return True
-
-
-            return False
-
+        return False
 
     ####################################################
 
@@ -530,7 +635,7 @@ class Trainer:
 
         with torch.no_grad():
 
-            for x,y in self.validation_loader:
+            for x, y in self.validation_loader:
 
                 x = x.to(self.device)
 
@@ -550,7 +655,7 @@ class Trainer:
 
                     if self.has_nan(
 
-                            y[key]
+                        y[key]
 
                     ):
 
@@ -605,8 +710,9 @@ class Trainer:
 
             self.original_model.state_dict(),
 
-            "models/Production/"
-            "best_model.pt"
+            self.production_dir +
+
+            "/best_model.pt"
 
         )
 
@@ -615,6 +721,7 @@ class Trainer:
     def save_epoch_model(
 
         self,
+
         epoch
 
     ):
@@ -623,7 +730,10 @@ class Trainer:
 
             self.original_model.state_dict(),
 
-            "models/Production/Epochs/"
+            self.production_dir +
+
+            "/Epochs/"
+
             f"epoch_{epoch}.pt"
 
         )
@@ -640,8 +750,9 @@ class Trainer:
 
             self.optimizer.state_dict(),
 
-            "models/Production/"
-            "optimizer.pt"
+            self.production_dir +
+
+            "/optimizer.pt"
 
         )
 
@@ -657,8 +768,27 @@ class Trainer:
 
             self.scheduler.state_dict(),
 
-            "models/Production/"
-            "scheduler.pt"
+            self.production_dir +
+
+            "/scheduler.pt"
+
+        )
+
+    ####################################################
+
+    def save_complete_model(
+
+        self
+
+    ):
+
+        torch.save(
+
+            self.original_model,
+
+            self.production_dir +
+
+            "/complete_model.pt"
 
         )
 
@@ -667,14 +797,17 @@ class Trainer:
     def save_checkpoint(
 
         self,
+
         epoch
 
     ):
 
         path = (
 
-            "models/Production/"
-            "Checkpoints/"
+            self.production_dir +
+
+            "/Checkpoints/"
+
             f"checkpoint_{epoch}.pt"
 
         )
@@ -683,7 +816,7 @@ class Trainer:
 
             {
 
-                "epoch":epoch,
+                "epoch": epoch,
 
                 "model":
 
@@ -697,9 +830,41 @@ class Trainer:
 
                 self.scheduler.state_dict(),
 
+                "history":
+
+                self.training_history,
+
+                "best_epoch":
+
+                self.best_epoch,
+
                 "best_loss":
 
                 self.best_loss,
+
+                "best_validation_loss":
+
+                self.best_validation_loss,
+
+                "no_improvement":
+
+                self.no_improvement,
+
+                "training_configuration": {
+
+                    "learning_rate": self.lr,
+
+                    "batch_size": self.batch_size,
+
+                    "workers": self.workers,
+
+                    "validation_split": self.validation_split,
+
+                    "checkpoint_interval": self.checkpoint_interval,
+
+                    "early_stop": self.early_stop_patience,
+
+                }
 
             },
 
@@ -712,14 +877,17 @@ class Trainer:
     def update_latest(
 
         self,
+
         epoch
 
     ):
 
         path = (
 
-            "models/Production/"
-            "Checkpoints/"
+            self.production_dir +
+
+            "/Checkpoints/"
+
             "latest.pt"
 
         )
@@ -728,7 +896,7 @@ class Trainer:
 
             {
 
-                "epoch":epoch,
+                "epoch": epoch,
 
                 "model":
 
@@ -742,9 +910,41 @@ class Trainer:
 
                 self.scheduler.state_dict(),
 
+                "history":
+
+                self.training_history,
+
+                "best_epoch":
+
+                self.best_epoch,
+
                 "best_loss":
 
                 self.best_loss,
+
+                "best_validation_loss":
+
+                self.best_validation_loss,
+
+                "no_improvement":
+
+                self.no_improvement,
+
+                "training_configuration": {
+
+                    "learning_rate": self.lr,
+
+                    "batch_size": self.batch_size,
+
+                    "workers": self.workers,
+
+                    "validation_split": self.validation_split,
+
+                    "checkpoint_interval": self.checkpoint_interval,
+
+                    "early_stop": self.early_stop_patience,
+
+                }
 
             },
 
@@ -762,15 +962,35 @@ class Trainer:
 
         path = (
 
-            "models/Production/"
-            "Checkpoints/"
+            self.production_dir +
+
+            "/Checkpoints/"
+
             "latest.pt"
 
         )
 
         if not os.path.exists(path):
 
+            print(
+
+                "No latest checkpoint found at:",
+
+                path
+
+            )
+
             return
+
+        print("\n" + "=" * 60)
+
+        print(
+
+            "RESUMING TRAINING FROM CHECKPOINT:",
+
+            path
+
+        )
 
         checkpoint = torch.load(
 
@@ -786,29 +1006,59 @@ class Trainer:
 
         )
 
-        self.optimizer.load_state_dict(
+        if "optimizer" in checkpoint:
 
-            checkpoint["optimizer"]
+            self.optimizer.load_state_dict(
+
+                checkpoint["optimizer"]
+
+            )
+
+        if "scheduler" in checkpoint:
+
+            self.scheduler.load_state_dict(
+
+                checkpoint["scheduler"]
+
+            )
+
+        if "history" in checkpoint:
+
+            self.training_history = checkpoint["history"]
+
+        if "best_epoch" in checkpoint:
+
+            self.best_epoch = checkpoint["best_epoch"]
+
+        if "best_loss" in checkpoint:
+
+            self.best_loss = checkpoint["best_loss"]
+
+        if "best_validation_loss" in checkpoint:
+
+            self.best_validation_loss = checkpoint["best_validation_loss"]
+
+        if "no_improvement" in checkpoint:
+
+            self.no_improvement = checkpoint["no_improvement"]
+
+        self.start_epoch = checkpoint.get("epoch", 0)
+
+        print(
+
+            f"Resuming from epoch: {self.start_epoch + 1}"
 
         )
 
-        self.scheduler.load_state_dict(
+        print(
 
-            checkpoint["scheduler"]
+            "Best validation loss restored:",
 
-        )
-
-        self.best_loss = (
-
-            checkpoint["best_loss"]
+            self.best_validation_loss
 
         )
 
-        self.start_epoch = (
-
-            checkpoint["epoch"] + 1
-
-        )
+        print("=" * 60 + "\n")
 
     ####################################################
 
@@ -818,53 +1068,64 @@ class Trainer:
 
     ):
 
-        path = (
+        path1 = (
 
-            "models/Production/"
-            "training_history.csv"
+            self.production_dir +
+
+            "/training_history.csv"
 
         )
 
-        with open(
+        path2 = (
 
-            path,
+            self.production_dir +
 
-            "w",
+            "/training.csv"
 
-            newline=""
+        )
 
-        ) as file:
+        for path in [path1, path2]:
 
-            writer = csv.writer(
+            with open(
 
-                file
+                path,
 
-            )
+                "w",
 
-            writer.writerow(
+                newline=""
 
-                [
+            ) as file:
 
-                    "Epoch",
+                writer = csv.writer(
 
-                    "Train Loss",
+                    file
 
-                    "Validation Loss",
+                )
 
-                    "Learning Rate",
+                writer.writerow(
 
-                    "Time"
+                    [
 
-                ]
+                        "Epoch",
 
-            )
+                        "Train Loss",
 
-            writer.writerows(
+                        "Validation Loss",
 
-                self.training_history
+                        "Learning Rate",
 
-            )
-        
+                        "Time"
+
+                    ]
+
+                )
+
+                writer.writerows(
+
+                    self.training_history
+
+                )
+
     ####################################################
 
     def save_best_information(
@@ -873,18 +1134,15 @@ class Trainer:
 
     ):
 
-
         data = {
 
             "best_epoch":
 
             self.best_epoch,
 
-
             "best_validation_loss":
 
             self.best_validation_loss,
-
 
             "device":
 
@@ -894,29 +1152,31 @@ class Trainer:
 
             ),
 
-
             "batch_size":
 
             self.batch_size,
-
 
             "learning_rate":
 
             self.lr,
 
-
         }
 
+        path = (
+
+            self.production_dir +
+
+            "/best_model_information.json"
+
+        )
 
         with open(
 
-            "models/Production/"
-            "best_model_information.json",
+            path,
 
             "w"
 
         ) as file:
-
 
             json.dump(
 
@@ -927,9 +1187,6 @@ class Trainer:
                 indent=4
 
             )
-
-
-    ####################################################
 
     ####################################################
 
@@ -978,10 +1235,17 @@ class Trainer:
 
             )
 
+        path = (
+
+            self.production_dir +
+
+            "/gpu_information.json"
+
+        )
+
         with open(
 
-            "models/Production/"
-            "gpu_information.json",
+            path,
 
             "w"
 
@@ -1007,19 +1271,35 @@ class Trainer:
 
         data = {
 
-            "learning_rate":self.lr,
-            "batch_size":self.batch_size,
-            "workers":self.workers,
-            "validation_split":self.validation_split,
-            "checkpoint_interval":self.checkpoint_interval,
-            "early_stop":self.early_stop_patience,
+            "learning_rate": self.lr,
+
+            "batch_size": self.batch_size,
+
+            "workers": self.workers,
+
+            "validation_split": self.validation_split,
+
+            "checkpoint_interval": self.checkpoint_interval,
+
+            "epoch_interval": self.epoch_interval,
+
+            "early_stop": self.early_stop_patience,
+
+            "drive_path": self.drive_path,
 
         }
 
+        path = (
+
+            self.production_dir +
+
+            "/training_configuration.json"
+
+        )
+
         with open(
 
-            "models/Production/"
-            "training_configuration.json",
+            path,
 
             "w"
 
@@ -1040,24 +1320,36 @@ class Trainer:
     def save_dataset_information(
 
         self,
+
         total,
+
         train,
+
         validation
 
     ):
 
         data = {
 
-            "total_samples":total,
-            "training":train,
-            "validation":validation,
+            "total_samples": total,
+
+            "training": train,
+
+            "validation": validation,
 
         }
 
+        path = (
+
+            self.production_dir +
+
+            "/dataset_information.json"
+
+        )
+
         with open(
 
-            "models/Production/"
-            "dataset_information.json",
+            path,
 
             "w"
 
@@ -1078,6 +1370,7 @@ class Trainer:
     def train(
 
         self,
+
         epochs=200
 
     ):
@@ -1087,6 +1380,7 @@ class Trainer:
         for epoch in range(
 
             self.start_epoch,
+
             epochs
 
         ):
@@ -1097,7 +1391,7 @@ class Trainer:
 
             batches = 0
 
-            for x,y in self.loader:
+            for x, y in self.loader:
 
                 try:
 
@@ -1128,6 +1422,7 @@ class Trainer:
                     loss = self.calculate_loss(
 
                         outputs,
+
                         y
 
                     )
@@ -1150,20 +1445,7 @@ class Trainer:
 
                     )
 
-                    # loss.backward()
-
-                    # torch.nn.utils.clip_grad_norm_(
-
-                    #     self.model.parameters(),
-
-                    #     1.0
-
-                    # )
-
                     loss.backward()
-
-
-            ##################################################
 
                     if self.gradient_exploded():
 
@@ -1181,8 +1463,6 @@ class Trainer:
 
                         continue
 
-                    ##################################################
-
                     torch.nn.utils.clip_grad_norm_(
 
                         self.original_model.parameters(),
@@ -1190,8 +1470,6 @@ class Trainer:
                         max_norm=1.0
 
                     )
-
-                    ##################################################
 
                     self.optimizer.step()
 
@@ -1203,10 +1481,7 @@ class Trainer:
 
                     batches += 1
 
-                # except Exception:
-
                 except Exception as error:
-
 
                     print(
 
@@ -1216,17 +1491,9 @@ class Trainer:
 
                     )
 
-
                     self.clear_gpu()
 
-
                     continue
-
-                    # self.clear_gpu()
-
-                    # continue
-
-                   
 
             if batches == 0:
 
@@ -1273,24 +1540,7 @@ class Trainer:
 
             )
 
-            # if validation_loss < self.best_loss:
-
-            #     self.best_loss = (
-
-            #         validation_loss
-
-            #     )
-
-            #     self.no_improvement = 0
-
-            #     self.save_best_model()
-
-            # else:
-
-            #     self.no_improvement += 1
-
             if validation_loss < self.best_loss:
-
 
                 self.best_loss = (
 
@@ -1298,38 +1548,111 @@ class Trainer:
 
                 )
 
-
                 self.best_validation_loss = (
 
                     validation_loss
 
                 )
 
-
                 self.best_epoch = (
 
-                    epoch+1
+                    epoch + 1
 
                 )
 
-
                 self.no_improvement = 0
-
 
                 self.save_best_model()
 
-
                 self.save_best_information()
-
 
             else:
 
-
                 self.no_improvement += 1
+
+            elapsed = round(
+
+                time.time() - start,
+
+                2
+
+            )
+
+            self.training_history.append(
+
+                [
+
+                    epoch + 1,
+
+                    train_loss,
+
+                    validation_loss,
+
+                    current_lr,
+
+                    elapsed
+
+                ]
+
+            )
+
+            ##################################################
+            # Save latest checkpoint every epoch
+            ##################################################
+
+            self.update_latest(
+
+                epoch + 1
+
+            )
+
+            self.save_history()
+
+            self.save_best_information()
+
+            self.save_training_configuration()
+
+            self.save_gpu_information()
+
+            self.save_complete_model()
+
+            torch.save(
+
+                self.original_model.state_dict(),
+
+                self.save_path
+
+            )
+
+            ##################################################
+            # Save epoch model every 10 epochs
+            ##################################################
 
             if (
 
-                (epoch+1)
+                (epoch + 1)
+
+                %
+
+                self.epoch_interval
+
+                == 0
+
+            ):
+
+                self.save_epoch_model(
+
+                    epoch + 1
+
+                )
+
+            ##################################################
+            # Save backup checkpoint every 20 epochs
+            ##################################################
+
+            if (
+
+                (epoch + 1)
 
                 %
 
@@ -1341,43 +1664,11 @@ class Trainer:
 
                 self.save_checkpoint(
 
-                    epoch+1
+                    epoch + 1
 
                 )
 
-                self.update_latest(
-
-                    epoch+1
-
-                )
-
-                self.save_epoch_model(
-
-                    epoch+1
-
-                )
-
-            elapsed = round(
-
-                time.time()-start,
-
-                2
-
-            )
-
-            self.training_history.append(
-
-                [
-
-                    epoch+1,
-                    train_loss,
-                    validation_loss,
-                    current_lr,
-                    elapsed
-
-                ]
-
-            )
+            ##################################################
 
             if torch.cuda.is_available():
 
@@ -1415,17 +1706,28 @@ class Trainer:
 
         )
 
+        self.save_complete_model()
+
         self.save_optimizer()
 
         self.save_scheduler()
 
         self.save_history()
 
+        self.save_best_information()
+
+        self.save_gpu_information()
+
+        self.save_training_configuration()
+
         ################################################
 
         print("\n")
-        print("="*60)
+
+        print("=" * 60)
+
         print("FINAL MODEL SAVED")
+
         print(
 
             "BEST MODEL :",
@@ -1433,7 +1735,6 @@ class Trainer:
             self.best_epoch
 
         )
-
 
         print(
 
@@ -1448,6 +1749,9 @@ class Trainer:
             )
 
         )
+
         print(self.save_path)
-        print("="*60)
-        print("\n") 
+
+        print("=" * 60)
+
+        print("\n")
