@@ -46,7 +46,7 @@ class Trainer:
                 seed
             )
 
-            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = True
 
     ####################################################
 
@@ -192,7 +192,9 @@ class Trainer:
 
                 batch_size = 64
 
-            workers = 2
+            cpu_cores = os.cpu_count() or 4
+
+            workers = min(4, cpu_cores)
 
             pin_memory = True
 
@@ -305,19 +307,31 @@ class Trainer:
 
         ####################################################
 
+        loader_kwargs = {
+
+            "batch_size": batch_size,
+
+            "pin_memory": pin_memory,
+
+            "num_workers": workers,
+
+            "drop_last": False,
+
+        }
+
+        if workers > 0:
+
+            loader_kwargs["persistent_workers"] = True
+
+            loader_kwargs["prefetch_factor"] = 2
+
         self.loader = DataLoader(
 
             self.train_dataset,
 
-            batch_size=batch_size,
-
             shuffle=True,
 
-            pin_memory=pin_memory,
-
-            num_workers=workers,
-
-            drop_last=False,
+            **loader_kwargs
 
         )
 
@@ -327,15 +341,9 @@ class Trainer:
 
             self.validation_dataset,
 
-            batch_size=batch_size,
-
             shuffle=False,
 
-            pin_memory=pin_memory,
-
-            num_workers=workers,
-
-            drop_last=False,
+            **loader_kwargs
 
         )
 
@@ -470,6 +478,12 @@ class Trainer:
 
         ####################################################
 
+        self.use_amp = torch.cuda.is_available()
+
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
+
+        ####################################################
+
         if self.resume:
 
             self.load_checkpoint()
@@ -541,13 +555,9 @@ class Trainer:
 
     ):
 
-        gc.collect()
-
         if torch.cuda.is_available():
 
             torch.cuda.empty_cache()
-
-            torch.cuda.ipc_collect()
 
     ####################################################
 
@@ -667,14 +677,17 @@ class Trainer:
 
                     continue
 
-                outputs = self.model(x)
+                with torch.cuda.amp.autocast(enabled=self.use_amp):
 
-                loss = self.calculate_loss(
+                    outputs = self.model(x)
 
-                    outputs,
-                    y
+                    loss = self.calculate_loss(
 
-                )
+                        outputs,
+
+                        y
+
+                    )
 
                 total_loss += (
 
@@ -1417,15 +1430,23 @@ class Trainer:
 
                         continue
 
-                    outputs = self.model(x)
+                    self.optimizer.zero_grad(
 
-                    loss = self.calculate_loss(
-
-                        outputs,
-
-                        y
+                        set_to_none=True
 
                     )
+
+                    with torch.cuda.amp.autocast(enabled=self.use_amp):
+
+                        outputs = self.model(x)
+
+                        loss = self.calculate_loss(
+
+                            outputs,
+
+                            y
+
+                        )
 
                     if (
 
@@ -1439,29 +1460,9 @@ class Trainer:
 
                         continue
 
-                    self.optimizer.zero_grad(
+                    self.scaler.scale(loss).backward()
 
-                        set_to_none=True
-
-                    )
-
-                    loss.backward()
-
-                    if self.gradient_exploded():
-
-                        print(
-
-                            "Gradient Explosion Detected."
-
-                        )
-
-                        self.optimizer.zero_grad(
-
-                            set_to_none=True
-
-                        )
-
-                        continue
+                    self.scaler.unscale_(self.optimizer)
 
                     torch.nn.utils.clip_grad_norm_(
 
@@ -1471,7 +1472,9 @@ class Trainer:
 
                     )
 
-                    self.optimizer.step()
+                    self.scaler.step(self.optimizer)
+
+                    self.scaler.update()
 
                     total_loss += (
 
@@ -1597,7 +1600,7 @@ class Trainer:
             )
 
             ##################################################
-            # Save latest checkpoint every epoch
+            # Save latest checkpoint & production model every epoch
             ##################################################
 
             self.update_latest(
@@ -1605,16 +1608,6 @@ class Trainer:
                 epoch + 1
 
             )
-
-            self.save_history()
-
-            self.save_best_information()
-
-            self.save_training_configuration()
-
-            self.save_gpu_information()
-
-            self.save_complete_model()
 
             torch.save(
 
@@ -1625,7 +1618,7 @@ class Trainer:
             )
 
             ##################################################
-            # Save epoch model every 10 epochs
+            # Save epoch model, history, config, gpu info every 10 epochs
             ##################################################
 
             if (
@@ -1645,6 +1638,12 @@ class Trainer:
                     epoch + 1
 
                 )
+
+                self.save_history()
+
+                self.save_training_configuration()
+
+                self.save_gpu_information()
 
             ##################################################
             # Save backup checkpoint every 20 epochs
@@ -1669,12 +1668,34 @@ class Trainer:
                 )
 
             ##################################################
+            # Save complete model, optimizer, scheduler every 50 epochs
+            ##################################################
 
-            if torch.cuda.is_available():
+            if (
 
-                if (epoch + 1) % 5 == 0:
+                (epoch + 1)
 
-                    self.clear_gpu()
+                %
+
+                50
+
+                == 0
+
+            ):
+
+                self.save_complete_model()
+
+                self.save_optimizer()
+
+                self.save_scheduler()
+
+            ##################################################
+            # Clear GPU cache every 25 epochs
+            ##################################################
+
+            if torch.cuda.is_available() and (epoch + 1) % 25 == 0:
+
+                self.clear_gpu()
 
             if (
 
@@ -1693,8 +1714,6 @@ class Trainer:
                 )
 
                 break
-
-            self.clear_gpu()
 
         ################################################
 
