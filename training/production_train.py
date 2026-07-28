@@ -1,39 +1,25 @@
-from ai.model import (
-    TradingTransformer
-)
+import os
 
-from ai.trainer import (
-    Trainer
-)
+from ai.model import TradingTransformer
+from ai.trainer import Trainer
 
-from training.production_dataset import (
-    ProductionDataset
-)
-
-from training.production_checkpoint import (
-    ProductionCheckpoint
-)
+from training.production_dataset import ProductionDataset
+from training.production_checkpoint import ProductionCheckpoint
 
 
 class ProductionTrain:
-
 
     def train(
 
         self,
         path,
         save_path,
+        drive_path,
         epochs=100
 
     ):
 
-
-        print(
-
-            "\nLoading Dataset ..."
-
-        )
-
+        print("\nLoading Dataset ...")
 
         X, y, dataset = (
 
@@ -47,47 +33,43 @@ class ProductionTrain:
 
         )
 
-
-        print(
-
-            "Dataset Size :",
-
-            len(X)
-
-        )
-
+        print("Dataset Size :", len(X))
 
         #################################################
 
+        # Create model
 
-        model = (
+        model = TradingTransformer(
 
-            TradingTransformer(
-
-                input_dim=X.shape[-1]
-
-            )
+            input_dim=X.shape[-1]
 
         )
 
+        #################################################
+
+        # Create Google Drive folder if it does not exist
+
+        os.makedirs(drive_path, exist_ok=True)
 
         #################################################
 
+        # Trainer
 
-        trainer = (
+        trainer = Trainer(
 
-            Trainer(
+            model=model,
 
-                model=model,
-                dataset=dataset
+            dataset=dataset,
 
-            )
+            save_path=save_path,
+
+            drive_path=drive_path,
+
+            resume=True
 
         )
 
-
         #################################################
-
 
         trainer.train(
 
@@ -95,9 +77,9 @@ class ProductionTrain:
 
         )
 
-
         #################################################
 
+        # Export final model
 
         ProductionCheckpoint().save(
 
@@ -107,12 +89,6 @@ class ProductionTrain:
 
         )
 
-
-        print(
-
-            "\nProduction Model Saved."
-
-        )
-
+        print("\nProduction Model Saved.")
 
         return model
