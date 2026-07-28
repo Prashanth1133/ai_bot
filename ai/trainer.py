@@ -106,27 +106,47 @@ class Trainer:
 
         ####################################################
 
-        if drive_path:
+        ####################################################
+        # STORAGE LOCATION
+        ####################################################
 
-            if not os.path.exists(
-                drive_path
-            ):
-                raise FileNotFoundError(
-                    f"\nGoogle Drive not mounted.\n{drive_path}"
-                )
+        if drive_path is None:
 
-            self.production_dir = os.path.join(
-                drive_path,
-                "Production"
+            raise ValueError(
+                """
+                drive_path is required.
+                Training cannot continue without Google Drive path.
+                """
             )
 
-        else:
+        drive_path = os.path.abspath(
+            drive_path
+        )
 
-            self.production_dir = (
+        if not os.path.exists(drive_path):
 
-                "models/Production"
+            raise FileNotFoundError(
+                f"""
+                Drive path not found:
 
+                {drive_path}
+
+                Check Google Drive mount.
+                """
             )
+
+        self.production_dir = os.path.join(
+            drive_path,
+            "Production"
+        )
+
+        print(
+            "Saving all training files to:"
+        )
+
+        print(
+            self.production_dir
+        )
 
         ####################################################
 
@@ -140,11 +160,11 @@ class Trainer:
 
         ):
 
-            self.save_path = (
+            self.save_path = os.path.join(
 
-                self.production_dir +
+                self.production_dir,
 
-                "/production_v1.pt"
+                "production_v1.pt"
 
             )
 
@@ -240,9 +260,13 @@ class Trainer:
 
         os.makedirs(
 
-            self.production_dir +
+            os.path.join(
 
-            "/Epochs",
+                self.production_dir,
+
+                "Epochs"
+
+            ),
 
             exist_ok=True
 
@@ -250,9 +274,13 @@ class Trainer:
 
         os.makedirs(
 
-            self.production_dir +
+            os.path.join(
 
-            "/Checkpoints",
+                self.production_dir,
+
+                "Checkpoints"
+
+            ),
 
             exist_ok=True
 
@@ -477,6 +505,8 @@ class Trainer:
         if self.resume:
 
             self.load_checkpoint()
+
+        self.verify_storage()
 
     ####################################################
 
@@ -710,13 +740,19 @@ class Trainer:
 
     ):
 
+        path = os.path.join(
+
+            self.production_dir,
+
+            "best_model.pt"
+
+        )
+
         torch.save(
 
             self.original_model.state_dict(),
 
-            self.production_dir +
-
-            "/best_model.pt"
+            path
 
         )
 
@@ -734,15 +770,21 @@ class Trainer:
 
     ):
 
+        path = os.path.join(
+
+            self.production_dir,
+
+            "Epochs",
+
+            f"epoch_{epoch}.pt"
+
+        )
+
         torch.save(
 
             self.original_model.state_dict(),
 
-            self.production_dir +
-
-            "/Epochs/"
-
-            f"epoch_{epoch}.pt"
+            path
 
         )
 
@@ -758,13 +800,19 @@ class Trainer:
 
     ):
 
+        path = os.path.join(
+
+            self.production_dir,
+
+            "optimizer.pt"
+
+        )
+
         torch.save(
 
             self.optimizer.state_dict(),
 
-            self.production_dir +
-
-            "/optimizer.pt"
+            path
 
         )
 
@@ -780,13 +828,19 @@ class Trainer:
 
     ):
 
+        path = os.path.join(
+
+            self.production_dir,
+
+            "scheduler.pt"
+
+        )
+
         torch.save(
 
             self.scheduler.state_dict(),
 
-            self.production_dir +
-
-            "/scheduler.pt"
+            path
 
         )
 
@@ -802,13 +856,19 @@ class Trainer:
 
     ):
 
+        path = os.path.join(
+
+            self.production_dir,
+
+            "complete_model.pt"
+
+        )
+
         torch.save(
 
             self.original_model,
 
-            self.production_dir +
-
-            "/complete_model.pt"
+            path
 
         )
 
@@ -826,11 +886,11 @@ class Trainer:
 
     ):
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/Checkpoints/"
+            "Checkpoints",
 
             f"checkpoint_{epoch}.pt"
 
@@ -910,11 +970,11 @@ class Trainer:
 
     ):
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/Checkpoints/"
+            "Checkpoints",
 
             "latest.pt"
 
@@ -992,11 +1052,11 @@ class Trainer:
 
     ):
 
-        latest = (
+        latest = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/Checkpoints/"
+            "Checkpoints",
 
             "latest.pt"
 
@@ -1022,11 +1082,11 @@ class Trainer:
 
         if checkpoint is None:
 
-            folder = (
+            folder = os.path.join(
 
-                self.production_dir +
+                self.production_dir,
 
-                "/Checkpoints"
+                "Checkpoints"
 
             )
 
@@ -1062,7 +1122,13 @@ class Trainer:
 
             latest_file = files[-1]
 
-            latest = folder + "/" + latest_file
+            latest = os.path.join(
+
+                folder,
+
+                latest_file
+
+            )
 
             try:
 
@@ -1162,19 +1228,19 @@ class Trainer:
 
     ):
 
-        path1 = (
+        path1 = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/training_history.csv"
+            "training_history.csv"
 
         )
 
-        path2 = (
+        path2 = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/training.csv"
+            "training.csv"
 
         )
 
@@ -1260,11 +1326,11 @@ class Trainer:
 
         }
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/best_model_information.json"
+            "best_model_information.json"
 
         )
 
@@ -1340,11 +1406,11 @@ class Trainer:
 
             )
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/gpu_information.json"
+            "gpu_information.json"
 
         )
 
@@ -1398,11 +1464,11 @@ class Trainer:
 
         }
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/training_configuration.json"
+            "training_configuration.json"
 
         )
 
@@ -1452,11 +1518,11 @@ class Trainer:
 
         }
 
-        path = (
+        path = os.path.join(
 
-            self.production_dir +
+            self.production_dir,
 
-            "/dataset_information.json"
+            "dataset_information.json"
 
         )
 
@@ -1481,6 +1547,58 @@ class Trainer:
         if hasattr(os, "sync"):
 
             os.sync()
+
+    ####################################################
+
+    def verify_storage(
+
+        self
+
+    ):
+
+        required = [
+
+            self.production_dir,
+
+            os.path.join(
+
+                self.production_dir,
+
+                "Epochs"
+
+            ),
+
+            os.path.join(
+
+                self.production_dir,
+
+                "Checkpoints"
+
+            )
+
+        ]
+
+        for path in required:
+
+            if os.path.exists(path):
+
+                print(
+
+                    "FOUND:",
+
+                    path
+
+                )
+
+            else:
+
+                print(
+
+                    "MISSING:",
+
+                    path
+
+                )
 
     ####################################################
 
@@ -1518,7 +1636,9 @@ class Trainer:
 
         self.save_gpu_information()
 
-        self.save_complete_model()
+        if epoch % 50 == 0:
+
+            self.save_complete_model()
 
         if hasattr(os, "sync"):
 
