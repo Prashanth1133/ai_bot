@@ -46,7 +46,7 @@ class Trainer:
                 seed
             )
 
-            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = True
 
     ####################################################
 
@@ -68,7 +68,7 @@ class Trainer:
 
         checkpoint_interval=20,
 
-        epoch_interval=10,
+        epoch_interval=5,
 
         early_stop_patience=25,
 
@@ -108,12 +108,16 @@ class Trainer:
 
         if drive_path:
 
-            self.production_dir = (
+            if not os.path.exists(
+                drive_path
+            ):
+                raise FileNotFoundError(
+                    f"\nGoogle Drive not mounted.\n{drive_path}"
+                )
 
-                drive_path +
-
-                "/Production"
-
+            self.production_dir = os.path.join(
+                drive_path,
+                "Production"
             )
 
         else:
@@ -192,9 +196,7 @@ class Trainer:
 
                 batch_size = 64
 
-            cpu_cores = os.cpu_count() or 4
-
-            workers = min(4, cpu_cores)
+            workers = 2
 
             pin_memory = True
 
@@ -307,31 +309,19 @@ class Trainer:
 
         ####################################################
 
-        loader_kwargs = {
-
-            "batch_size": batch_size,
-
-            "pin_memory": pin_memory,
-
-            "num_workers": workers,
-
-            "drop_last": False,
-
-        }
-
-        if workers > 0:
-
-            loader_kwargs["persistent_workers"] = True
-
-            loader_kwargs["prefetch_factor"] = 2
-
         self.loader = DataLoader(
 
             self.train_dataset,
 
+            batch_size=batch_size,
+
             shuffle=True,
 
-            **loader_kwargs
+            pin_memory=pin_memory,
+
+            num_workers=workers,
+
+            drop_last=False,
 
         )
 
@@ -341,9 +331,15 @@ class Trainer:
 
             self.validation_dataset,
 
+            batch_size=batch_size,
+
             shuffle=False,
 
-            **loader_kwargs
+            pin_memory=pin_memory,
+
+            num_workers=workers,
+
+            drop_last=False,
 
         )
 
@@ -478,12 +474,6 @@ class Trainer:
 
         ####################################################
 
-        self.use_amp = torch.cuda.is_available()
-
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
-
-        ####################################################
-
         if self.resume:
 
             self.load_checkpoint()
@@ -555,9 +545,13 @@ class Trainer:
 
     ):
 
+        gc.collect()
+
         if torch.cuda.is_available():
 
             torch.cuda.empty_cache()
+
+            torch.cuda.ipc_collect()
 
     ####################################################
 
@@ -677,17 +671,14 @@ class Trainer:
 
                     continue
 
-                with torch.cuda.amp.autocast(enabled=self.use_amp):
+                outputs = self.model(x)
 
-                    outputs = self.model(x)
+                loss = self.calculate_loss(
 
-                    loss = self.calculate_loss(
+                    outputs,
+                    y
 
-                        outputs,
-
-                        y
-
-                    )
+                )
 
                 total_loss += (
 
@@ -729,6 +720,10 @@ class Trainer:
 
         )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_epoch_model(
@@ -751,6 +746,10 @@ class Trainer:
 
         )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_optimizer(
@@ -768,6 +767,10 @@ class Trainer:
             "/optimizer.pt"
 
         )
+
+        if hasattr(os, "sync"):
+
+            os.sync()
 
     ####################################################
 
@@ -787,6 +790,10 @@ class Trainer:
 
         )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_complete_model(
@@ -804,6 +811,10 @@ class Trainer:
             "/complete_model.pt"
 
         )
+
+        if hasattr(os, "sync"):
+
+            os.sync()
 
     ####################################################
 
@@ -885,6 +896,10 @@ class Trainer:
 
         )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def update_latest(
@@ -965,6 +980,10 @@ class Trainer:
 
         )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def load_checkpoint(
@@ -973,7 +992,7 @@ class Trainer:
 
     ):
 
-        path = (
+        latest = (
 
             self.production_dir +
 
@@ -983,17 +1002,87 @@ class Trainer:
 
         )
 
-        if not os.path.exists(path):
+        checkpoint = None
 
-            print(
+        if os.path.exists(latest):
 
-                "No latest checkpoint found at:",
+            try:
 
-                path
+                checkpoint = torch.load(
+
+                    latest,
+
+                    map_location=self.device
+
+                )
+
+            except Exception:
+
+                checkpoint = None
+
+        if checkpoint is None:
+
+            folder = (
+
+                self.production_dir +
+
+                "/Checkpoints"
 
             )
 
-            return
+            files = []
+
+            if os.path.exists(folder):
+
+                for file in os.listdir(folder):
+
+                    if file.startswith("checkpoint_") and file.endswith(".pt"):
+
+                        files.append(file)
+
+            if len(files) == 0:
+
+                print(
+
+                    "No checkpoint found."
+
+                )
+
+                return
+
+            files.sort(
+
+                key=lambda x: int(
+
+                    x.split("_")[1].replace(".pt", "")
+
+                )
+
+            )
+
+            latest_file = files[-1]
+
+            latest = folder + "/" + latest_file
+
+            try:
+
+                checkpoint = torch.load(
+
+                    latest,
+
+                    map_location=self.device
+
+                )
+
+            except Exception as error:
+
+                print(
+
+                    f"Failed to load checkpoint {latest}: {error}"
+
+                )
+
+                return
 
         print("\n" + "=" * 60)
 
@@ -1001,15 +1090,7 @@ class Trainer:
 
             "RESUMING TRAINING FROM CHECKPOINT:",
 
-            path
-
-        )
-
-        checkpoint = torch.load(
-
-            path,
-
-            map_location=self.device
+            latest
 
         )
 
@@ -1139,6 +1220,10 @@ class Trainer:
 
                 )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_best_information(
@@ -1201,6 +1286,10 @@ class Trainer:
 
             )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_gpu_information(
@@ -1234,8 +1323,11 @@ class Trainer:
                 round(
 
                     torch.cuda.
+
                     get_device_properties(
+
                         0
+
                     ).total_memory
 
                     /
@@ -1273,6 +1365,10 @@ class Trainer:
                 indent=4
 
             )
+
+        if hasattr(os, "sync"):
+
+            os.sync()
 
     ####################################################
 
@@ -1328,6 +1424,10 @@ class Trainer:
 
             )
 
+        if hasattr(os, "sync"):
+
+            os.sync()
+
     ####################################################
 
     def save_dataset_information(
@@ -1377,6 +1477,52 @@ class Trainer:
                 indent=4
 
             )
+
+        if hasattr(os, "sync"):
+
+            os.sync()
+
+    ####################################################
+
+    def save_everything(
+
+        self,
+
+        epoch
+
+    ):
+
+        self.update_latest(
+
+            epoch
+
+        )
+
+        torch.save(
+
+            self.original_model.state_dict(),
+
+            self.save_path
+
+        )
+
+        self.save_history()
+
+        self.save_optimizer()
+
+        self.save_scheduler()
+
+        self.save_best_information()
+
+        self.save_training_configuration()
+
+        self.save_gpu_information()
+
+        self.save_complete_model()
+
+        if hasattr(os, "sync"):
+
+            os.sync()
 
     ####################################################
 
@@ -1430,23 +1576,15 @@ class Trainer:
 
                         continue
 
-                    self.optimizer.zero_grad(
+                    outputs = self.model(x)
 
-                        set_to_none=True
+                    loss = self.calculate_loss(
+
+                        outputs,
+
+                        y
 
                     )
-
-                    with torch.cuda.amp.autocast(enabled=self.use_amp):
-
-                        outputs = self.model(x)
-
-                        loss = self.calculate_loss(
-
-                            outputs,
-
-                            y
-
-                        )
 
                     if (
 
@@ -1460,9 +1598,29 @@ class Trainer:
 
                         continue
 
-                    self.scaler.scale(loss).backward()
+                    self.optimizer.zero_grad(
 
-                    self.scaler.unscale_(self.optimizer)
+                        set_to_none=True
+
+                    )
+
+                    loss.backward()
+
+                    if self.gradient_exploded():
+
+                        print(
+
+                            "Gradient Explosion Detected."
+
+                        )
+
+                        self.optimizer.zero_grad(
+
+                            set_to_none=True
+
+                        )
+
+                        continue
 
                     torch.nn.utils.clip_grad_norm_(
 
@@ -1472,9 +1630,7 @@ class Trainer:
 
                     )
 
-                    self.scaler.step(self.optimizer)
-
-                    self.scaler.update()
+                    self.optimizer.step()
 
                     total_loss += (
 
@@ -1600,25 +1756,17 @@ class Trainer:
             )
 
             ##################################################
-            # Save latest checkpoint & production model every epoch
+            # Save everything every epoch
             ##################################################
 
-            self.update_latest(
+            self.save_everything(
 
                 epoch + 1
 
             )
 
-            torch.save(
-
-                self.original_model.state_dict(),
-
-                self.save_path
-
-            )
-
             ##################################################
-            # Save epoch model, history, config, gpu info every 10 epochs
+            # Save epoch model every 5 epochs
             ##################################################
 
             if (
@@ -1638,12 +1786,6 @@ class Trainer:
                     epoch + 1
 
                 )
-
-                self.save_history()
-
-                self.save_training_configuration()
-
-                self.save_gpu_information()
 
             ##################################################
             # Save backup checkpoint every 20 epochs
@@ -1668,34 +1810,12 @@ class Trainer:
                 )
 
             ##################################################
-            # Save complete model, optimizer, scheduler every 50 epochs
-            ##################################################
 
-            if (
+            if torch.cuda.is_available():
 
-                (epoch + 1)
+                if (epoch + 1) % 5 == 0:
 
-                %
-
-                50
-
-                == 0
-
-            ):
-
-                self.save_complete_model()
-
-                self.save_optimizer()
-
-                self.save_scheduler()
-
-            ##################################################
-            # Clear GPU cache every 25 epochs
-            ##################################################
-
-            if torch.cuda.is_available() and (epoch + 1) % 25 == 0:
-
-                self.clear_gpu()
+                    self.clear_gpu()
 
             if (
 
@@ -1714,6 +1834,8 @@ class Trainer:
                 )
 
                 break
+
+            self.clear_gpu()
 
         ################################################
 
