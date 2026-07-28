@@ -51,6 +51,8 @@ class ProductionTrain:
 
         os.makedirs(drive_path, exist_ok=True)
 
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
         #################################################
 
         # Trainer

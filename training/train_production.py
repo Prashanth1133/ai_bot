@@ -6,7 +6,7 @@ from training.production_train import ProductionTrain
 DATASET_PATH = "data/processed/combined.npy"
 
 # Final exported model
-MODEL_PATH = "models/production_v1.pt"
+MODEL_PATH = "/content/drive/MyDrive/CryptoVisionAI/Production/production_v1.pt"
 
 # Google Drive location
 DRIVE_PATH = "/content/drive/MyDrive/CryptoVisionAI"
