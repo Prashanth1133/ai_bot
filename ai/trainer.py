@@ -482,6 +482,14 @@ class Trainer:
 
         ####################################################
 
+        self.minimum_lr = 1e-7
+
+        self.lr_reduction_count = 0
+
+        self.maximum_lr_reduction = 4
+
+        ####################################################
+
         self.save_dataset_information(
 
             total_size,
@@ -755,6 +763,42 @@ class Trainer:
         if hasattr(os, "sync"):
 
             os.sync()
+
+    ####################################################
+
+    def restore_best_model(
+
+        self
+
+    ):
+
+        path = os.path.join(
+
+            self.production_dir,
+
+            "best_model.pt"
+
+        )
+
+        if os.path.exists(path):
+
+            self.original_model.load_state_dict(
+
+                torch.load(
+
+                    path,
+
+                    map_location=self.device
+
+                )
+
+            )
+
+            print(
+
+                "\nBEST MODEL RESTORED."
+
+            )
 
     ####################################################
 
@@ -1788,18 +1832,51 @@ class Trainer:
 
             )
 
+            old_lr = (
+
+                self.optimizer.
+
+                param_groups[0]["lr"]
+
+            )
+
             self.scheduler.step(
 
                 validation_loss
 
             )
 
-            current_lr = (
+            new_lr = (
 
                 self.optimizer.
+
                 param_groups[0]["lr"]
 
             )
+
+            if new_lr < old_lr:
+
+                self.lr_reduction_count += 1
+
+                print(
+
+                    f"\nLearning Rate Reduced"
+
+                    f"\nOLD LR : {old_lr}"
+
+                    f"\nNEW LR : {new_lr}"
+
+                )
+
+                self.no_improvement = 0
+
+                self.model.load_state_dict(
+
+                    torch.load(self.best_save_path)
+
+                )
+
+            current_lr = new_lr
 
             print(
 
@@ -1953,6 +2030,14 @@ class Trainer:
 
                 self.clear_gpu()
 
+            current_lr = (
+
+                self.optimizer.
+
+                param_groups[0]["lr"]
+
+            )
+
             if (
 
                 self.no_improvement
@@ -1963,13 +2048,71 @@ class Trainer:
 
             ):
 
-                print(
+                if (
 
-                    "\nEARLY STOPPING.\n"
+                    current_lr
 
-                )
+                    >
 
-                break
+                    self.minimum_lr
+
+                ) and (
+
+                    self.lr_reduction_count
+
+                    <
+
+                    self.maximum_lr_reduction
+
+                ):
+
+                    print(
+
+                        "\nWaiting for LR reduction."
+
+                    )
+
+                elif (
+
+                    self.lr_reduction_count
+
+                    >=
+
+                    self.maximum_lr_reduction
+
+                ) or (
+
+                    current_lr
+
+                    <=
+
+                    self.minimum_lr
+
+                ):
+
+                    print(
+
+                        "\nEARLY STOPPING."
+
+                    )
+
+                    print(
+
+                        "\nNO IMPROVEMENT FOUND."
+
+                    )
+
+                    print(
+
+                        "\nBEST MODEL :",
+
+                        self.best_epoch
+
+                    )
+
+                    self.restore_best_model()
+
+                    break
 
         ################################################
 
