@@ -40,7 +40,7 @@ def train(
 
     trainer.train(
 
-        epochs=200
+        epochs=20
 
     )
 
