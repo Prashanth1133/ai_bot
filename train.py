@@ -12,12 +12,12 @@ def main():
         model=model,
         dataset=dataset,
         resume=True,
-        checkpoint_interval=20,
-        early_stop_patience=25,
+        checkpoint_interval=50,
+        early_stop_patience=12,
     )
 
     trainer.train(
-        epochs=500
+        epochs=200
     )
 
 

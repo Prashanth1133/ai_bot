@@ -66,13 +66,13 @@ class Trainer:
 
         weight_decay=1e-5,
 
-        checkpoint_interval=20,
+        checkpoint_interval=50,
 
-        epoch_interval=5,
+        epoch_interval=10,
 
-        early_stop_patience=25,
+        early_stop_patience=12,
 
-        validation_split=0.15,
+        validation_split=0.10,
 
         resume=False,
 
@@ -200,17 +200,13 @@ class Trainer:
 
             )
 
-            if total_memory >= 24:
+            if total_memory >= 12:
 
                 batch_size = 512
 
-            elif total_memory >= 16:
+            elif total_memory >= 8:
 
                 batch_size = 256
-
-            elif total_memory >= 12:
-
-                batch_size = 128
 
             else:
 
@@ -1636,7 +1632,7 @@ class Trainer:
 
         self.save_gpu_information()
 
-        if epoch % 50 == 0:
+        if epoch % 5 == 0:
 
             self.save_complete_model()
 
@@ -1876,17 +1872,39 @@ class Trainer:
             )
 
             ##################################################
-            # Save everything every epoch
+            # Save latest every epoch
             ##################################################
 
-            self.save_everything(
+            self.update_latest(
 
                 epoch + 1
 
             )
 
             ##################################################
-            # Save epoch model every 5 epochs
+            # Save everything every 5 epochs
+            ##################################################
+
+            if (
+
+                (epoch + 1)
+
+                %
+
+                5
+
+                == 0
+
+            ):
+
+                self.save_everything(
+
+                    epoch + 1
+
+                )
+
+            ##################################################
+            # Save epoch model every 10 epochs
             ##################################################
 
             if (
@@ -1908,7 +1926,7 @@ class Trainer:
                 )
 
             ##################################################
-            # Save backup checkpoint every 20 epochs
+            # Save backup checkpoint every 50 epochs
             ##################################################
 
             if (
@@ -1931,11 +1949,9 @@ class Trainer:
 
             ##################################################
 
-            if torch.cuda.is_available():
+            if (epoch + 1) % 5 == 0:
 
-                if (epoch + 1) % 5 == 0:
-
-                    self.clear_gpu()
+                self.clear_gpu()
 
             if (
 
@@ -1954,8 +1970,6 @@ class Trainer:
                 )
 
                 break
-
-            self.clear_gpu()
 
         ################################################
 
