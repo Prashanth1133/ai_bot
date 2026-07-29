@@ -74,7 +74,7 @@ class Trainer:
 
         early_stop_patience=12,
 
-        validation_split=0.10,
+        validation_split=0.05,
 
         resume=False,
 
@@ -194,7 +194,8 @@ class Trainer:
 
         self.use_amp = torch.cuda.is_available()
 
-        self.scaler = torch.cuda.amp.GradScaler(
+        self.scaler = torch.amp.GradScaler(
+            "cuda",
             enabled=self.use_amp
         )
 
@@ -228,7 +229,7 @@ class Trainer:
 
                 batch_size = 128
 
-            workers = 2
+            workers = 4
 
             pin_memory = True
 
@@ -403,6 +404,10 @@ class Trainer:
 
         ####################################################
 
+        #################################################
+        # MODEL COMPILATION
+        #################################################
+
         if (
 
             torch.cuda.is_available()
@@ -421,15 +426,47 @@ class Trainer:
 
             try:
 
-                self.model = (
+                total_memory = (
 
-                    torch.compile(
+                    torch.cuda.get_device_properties(
 
-                        self.model
+                        0
+
+                    ).total_memory
+
+                    /
+
+                    1024**3
+
+                )
+
+                if total_memory >= 16:
+
+                    self.model = (
+
+                        torch.compile(
+
+                            self.model,
+
+                            mode="max-autotune"
+
+                        )
 
                     )
 
-                )
+                else:
+
+                    self.model = (
+
+                        torch.compile(
+
+                            self.model,
+
+                            mode="reduce-overhead"
+
+                        )
+
+                    )
 
                 print(
 
@@ -437,9 +474,15 @@ class Trainer:
 
                 )
 
-            except Exception:
+            except Exception as error:
 
-                pass
+                print(
+
+                    "Compilation skipped.",
+
+                    error
+
+                )
 
         ####################################################
 
@@ -721,7 +764,9 @@ class Trainer:
 
                     continue
 
-                with torch.cuda.amp.autocast(
+                with torch.amp.autocast(
+
+                    device_type="cuda",
 
                     enabled=self.use_amp
 
@@ -1738,7 +1783,9 @@ class Trainer:
 
                         continue
 
-                    with torch.cuda.amp.autocast(
+                    with torch.amp.autocast(
+
+                        device_type="cuda",
 
                         enabled=self.use_amp
 
