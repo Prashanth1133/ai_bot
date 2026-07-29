@@ -200,14 +200,13 @@ class Trainer:
 
             )
 
-            if total_memory >= 14:
+            if total_memory >= 12:
 
                 batch_size = 512
 
-          
-            elif total_memory>=8:
+            elif total_memory >= 8:
 
-                batch_size=256
+                batch_size = 256
 
             else:
 
@@ -2030,4 +2029,4 @@ class Trainer:
 
         print("=" * 60)
 
-        print("\n")
+        print("\n")       
