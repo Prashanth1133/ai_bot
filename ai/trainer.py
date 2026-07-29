@@ -202,12 +202,9 @@ class Trainer:
 
             if total_memory >= 14:
 
-                batch_size = 1024
-
-            elif total_memory >= 10:
-
                 batch_size = 512
-                
+
+          
             elif total_memory>=8:
 
                 batch_size=256
