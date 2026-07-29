@@ -68,11 +68,11 @@ class Trainer:
 
         checkpoint_interval=50,
 
-        epoch_interval=10,
+        epoch_interval=20,
 
-        early_stop_patience=12,
+        early_stop_patience=10,
 
-        validation_split=0.10,
+        validation_split=0.05,
 
         resume=False,
 
@@ -200,13 +200,17 @@ class Trainer:
 
             )
 
-            if total_memory >= 12:
+            if total_memory >= 14:
+
+                batch_size = 1024
+
+            elif total_memory >= 10:
 
                 batch_size = 512
+                
+            elif total_memory>=8:
 
-            elif total_memory >= 8:
-
-                batch_size = 256
+                batch_size=256
 
             else:
 
@@ -442,7 +446,7 @@ class Trainer:
 
                 factor=0.50,
 
-                patience=5,
+                patience=3,
 
             )
 
@@ -1632,7 +1636,7 @@ class Trainer:
 
         self.save_gpu_information()
 
-        if epoch % 5 == 0:
+        if epoch % 20 == 0:
 
             self.save_complete_model()
 
@@ -1891,7 +1895,7 @@ class Trainer:
 
                 %
 
-                5
+                20
 
                 == 0
 
