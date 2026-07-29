@@ -404,59 +404,15 @@ class Trainer:
 
         ####################################################
 
-        #################################################
-        # MODEL COMPILATION
-        #################################################
+        ####################################################
+        # TORCH COMPILE DISABLED FOR T4 GPU
+        ####################################################
 
-        if (
+        print(
 
-            torch.cuda.is_available()
+            "Running without torch.compile()."
 
-            and
-
-            hasattr(
-
-                torch,
-
-                "compile"
-
-            )
-
-        ):
-
-            try:
-
-                self.model = (
-
-                    torch.compile(
-
-                        self.model,
-
-                        mode="reduce-overhead",
-
-                        dynamic=True,
-
-                        fullgraph=False
-
-                    )
-
-                )
-
-                print(
-
-                    "Model Compiled."
-
-                )
-
-            except Exception as error:
-
-                print(
-
-                    "Compilation skipped.",
-
-                    error
-
-                )
+        )
 
         ####################################################
 
@@ -737,12 +693,6 @@ class Trainer:
                 if skip:
 
                     continue
-
-                if torch.cuda.is_available():
-
-                    if hasattr(torch.compiler, "cudagraph_mark_step_begin"):
-
-                        torch.compiler.cudagraph_mark_step_begin()
 
                 with torch.amp.autocast(
 
@@ -1759,12 +1709,6 @@ class Trainer:
 
                         continue
 
-                    if torch.cuda.is_available():
-
-                        if hasattr(torch.compiler, "cudagraph_mark_step_begin"):
-
-                            torch.compiler.cudagraph_mark_step_begin()
-
                     with torch.amp.autocast(
 
                         device_type="cuda",
@@ -1979,7 +1923,7 @@ class Trainer:
             )
 
             ##################################################
-            # Save everything every 5 epochs
+            # Save everything every 10 epochs
             ##################################################
 
             if (
@@ -1988,7 +1932,7 @@ class Trainer:
 
                 %
 
-                5
+                10
 
                 == 0
 
