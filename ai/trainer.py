@@ -68,11 +68,11 @@ class Trainer:
 
         checkpoint_interval=50,
 
-        epoch_interval=20,
+        epoch_interval=10,
 
-        early_stop_patience=10,
+        early_stop_patience=12,
 
-        validation_split=0.05,
+        validation_split=0.10,
 
         resume=False,
 
@@ -443,7 +443,7 @@ class Trainer:
 
                 factor=0.50,
 
-                patience=3,
+                patience=5,
 
             )
 
@@ -1633,7 +1633,7 @@ class Trainer:
 
         self.save_gpu_information()
 
-        if epoch % 20 == 0:
+        if epoch % 5 == 0:
 
             self.save_complete_model()
 
@@ -1892,7 +1892,7 @@ class Trainer:
 
                 %
 
-                20
+                5
 
                 == 0
 
