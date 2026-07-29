@@ -229,7 +229,7 @@ class Trainer:
 
                 batch_size = 128
 
-            workers = 4
+            workers = 2
 
             pin_memory = True
 
@@ -362,7 +362,7 @@ class Trainer:
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=4 if workers > 0 else None,
+            prefetch_factor=(2 if workers > 0 else None),
 
             num_workers=workers,
 
@@ -384,7 +384,7 @@ class Trainer:
 
             persistent_workers=(workers > 0),
 
-            prefetch_factor=4 if workers > 0 else None,
+            prefetch_factor=(2 if workers > 0 else None),
 
             num_workers=workers,
 
@@ -426,47 +426,21 @@ class Trainer:
 
             try:
 
-                total_memory = (
+                self.model = (
 
-                    torch.cuda.get_device_properties(
+                    torch.compile(
 
-                        0
+                        self.model,
 
-                    ).total_memory
+                        mode="reduce-overhead",
 
-                    /
+                        dynamic=True,
 
-                    1024**3
+                        fullgraph=False
+
+                    )
 
                 )
-
-                if total_memory >= 16:
-
-                    self.model = (
-
-                        torch.compile(
-
-                            self.model,
-
-                            mode="max-autotune"
-
-                        )
-
-                    )
-
-                else:
-
-                    self.model = (
-
-                        torch.compile(
-
-                            self.model,
-
-                            mode="reduce-overhead"
-
-                        )
-
-                    )
 
                 print(
 
@@ -763,6 +737,12 @@ class Trainer:
                 if skip:
 
                     continue
+
+                if torch.cuda.is_available():
+
+                    if hasattr(torch.compiler, "cudagraph_mark_step_begin"):
+
+                        torch.compiler.cudagraph_mark_step_begin()
 
                 with torch.amp.autocast(
 
@@ -1723,10 +1703,6 @@ class Trainer:
 
         self.save_gpu_information()
 
-        if epoch % 5 == 0:
-
-            self.save_complete_model()
-
         if hasattr(os, "sync"):
 
             os.sync()
@@ -1782,6 +1758,12 @@ class Trainer:
                     if self.has_nan(x):
 
                         continue
+
+                    if torch.cuda.is_available():
+
+                        if hasattr(torch.compiler, "cudagraph_mark_step_begin"):
+
+                            torch.compiler.cudagraph_mark_step_begin()
 
                     with torch.amp.autocast(
 
