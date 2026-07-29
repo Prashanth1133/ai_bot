@@ -48,8 +48,6 @@ class Trainer:
 
             torch.backends.cudnn.deterministic = True
 
-            torch.backends.cudnn.benchmark = True
-
     ####################################################
 
     def __init__(
@@ -74,7 +72,7 @@ class Trainer:
 
         early_stop_patience=12,
 
-        validation_split=0.05,
+        validation_split=0.10,
 
         resume=False,
 
@@ -189,17 +187,6 @@ class Trainer:
         )
 
         ####################################################
-        # MIXED PRECISION
-        ####################################################
-
-        self.use_amp = torch.cuda.is_available()
-
-        self.scaler = torch.amp.GradScaler(
-            "cuda",
-            enabled=self.use_amp
-        )
-
-        ####################################################
 
         if torch.cuda.is_available():
 
@@ -213,13 +200,9 @@ class Trainer:
 
             )
 
-            if total_memory >= 14:
+            if total_memory >= 12:
 
                 batch_size = 512
-
-            elif total_memory >= 12:
-
-                batch_size = 384
 
             elif total_memory >= 8:
 
@@ -227,7 +210,7 @@ class Trainer:
 
             else:
 
-                batch_size = 128
+                batch_size = 64
 
             workers = 2
 
@@ -360,10 +343,6 @@ class Trainer:
 
             pin_memory=pin_memory,
 
-            persistent_workers=(workers > 0),
-
-            prefetch_factor=(2 if workers > 0 else None),
-
             num_workers=workers,
 
             drop_last=False,
@@ -381,10 +360,6 @@ class Trainer:
             shuffle=False,
 
             pin_memory=pin_memory,
-
-            persistent_workers=(workers > 0),
-
-            prefetch_factor=(2 if workers > 0 else None),
 
             num_workers=workers,
 
@@ -404,15 +379,43 @@ class Trainer:
 
         ####################################################
 
-        ####################################################
-        # TORCH COMPILE DISABLED FOR T4 GPU
-        ####################################################
+        if (
 
-        print(
+            torch.cuda.is_available()
 
-            "Running without torch.compile()."
+            and
 
-        )
+            hasattr(
+
+                torch,
+
+                "compile"
+
+            )
+
+        ):
+
+            try:
+
+                self.model = (
+
+                    torch.compile(
+
+                        self.model
+
+                    )
+
+                )
+
+                print(
+
+                    "Model Compiled."
+
+                )
+
+            except Exception:
+
+                pass
 
         ####################################################
 
@@ -694,22 +697,14 @@ class Trainer:
 
                     continue
 
-                with torch.amp.autocast(
+                outputs = self.model(x)
 
-                    device_type="cuda",
+                loss = self.calculate_loss(
 
-                    enabled=self.use_amp
+                    outputs,
+                    y
 
-                ):
-
-                    outputs = self.model(x)
-
-                    loss = self.calculate_loss(
-
-                        outputs,
-                        y
-
-                    )
+                )
 
                 total_loss += (
 
@@ -915,10 +910,6 @@ class Trainer:
 
                 self.scheduler.state_dict(),
 
-                "scaler":
-
-                self.scaler.state_dict(),
-
                 "history":
 
                 self.training_history,
@@ -1002,10 +993,6 @@ class Trainer:
                 "scheduler":
 
                 self.scheduler.state_dict(),
-
-                "scaler":
-
-                self.scaler.state_dict(),
 
                 "history":
 
@@ -1188,14 +1175,6 @@ class Trainer:
             self.scheduler.load_state_dict(
 
                 checkpoint["scheduler"]
-
-            )
-
-        if "scaler" in checkpoint:
-
-            self.scaler.load_state_dict(
-
-                checkpoint["scaler"]
 
             )
 
@@ -1653,6 +1632,10 @@ class Trainer:
 
         self.save_gpu_information()
 
+        if epoch % 5 == 0:
+
+            self.save_complete_model()
+
         if hasattr(os, "sync"):
 
             os.sync()
@@ -1709,23 +1692,15 @@ class Trainer:
 
                         continue
 
-                    with torch.amp.autocast(
+                    outputs = self.model(x)
 
-                        device_type="cuda",
+                    loss = self.calculate_loss(
 
-                        enabled=self.use_amp
+                        outputs,
 
-                    ):
+                        y
 
-                        outputs = self.model(x)
-
-                        loss = self.calculate_loss(
-
-                            outputs,
-
-                            y
-
-                        )
+                    )
 
                     if (
 
@@ -1745,11 +1720,7 @@ class Trainer:
 
                     )
 
-                    self.scaler.scale(
-
-                        loss
-
-                    ).backward()
+                    loss.backward()
 
                     if self.gradient_exploded():
 
@@ -1767,12 +1738,6 @@ class Trainer:
 
                         continue
 
-                    self.scaler.unscale_(
-
-                        self.optimizer
-
-                    )
-
                     torch.nn.utils.clip_grad_norm_(
 
                         self.original_model.parameters(),
@@ -1781,13 +1746,7 @@ class Trainer:
 
                     )
 
-                    self.scaler.step(
-
-                        self.optimizer
-
-                    )
-
-                    self.scaler.update()
+                    self.optimizer.step()
 
                     total_loss += (
 
@@ -1923,7 +1882,7 @@ class Trainer:
             )
 
             ##################################################
-            # Save everything every 10 epochs
+            # Save everything every 5 epochs
             ##################################################
 
             if (
@@ -1932,7 +1891,7 @@ class Trainer:
 
                 %
 
-                10
+                5
 
                 == 0
 
