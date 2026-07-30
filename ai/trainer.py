@@ -174,6 +174,16 @@ class Trainer:
 
         ####################################################
 
+        self.best_save_path = os.path.join(
+
+            self.production_dir,
+
+            "best_model.pt"
+
+        )
+
+        ####################################################
+
         self.device = torch.device(
 
             "cuda"
@@ -744,19 +754,11 @@ class Trainer:
 
     ):
 
-        path = os.path.join(
-
-            self.production_dir,
-
-            "best_model.pt"
-
-        )
-
         torch.save(
 
             self.original_model.state_dict(),
 
-            path
+            self.best_save_path
 
         )
 
@@ -772,25 +774,19 @@ class Trainer:
 
     ):
 
-        path = os.path.join(
+        if os.path.exists(self.best_save_path):
 
-            self.production_dir,
+            best_weights = torch.load(
 
-            "best_model.pt"
+                self.best_save_path,
 
-        )
+                map_location=self.device
 
-        if os.path.exists(path):
+            )
 
             self.original_model.load_state_dict(
 
-                torch.load(
-
-                    path,
-
-                    map_location=self.device
-
-                )
+                best_weights
 
             )
 
@@ -1868,13 +1864,41 @@ class Trainer:
 
                 )
 
+                print("\n")
+
+                print("=" * 60)
+
+                print("LOADING BEST MODEL")
+
+                print("BEST EPOCH :", self.best_epoch)
+
+                print("BEST LOSS :", self.best_validation_loss)
+
+                print("=" * 60)
+
+                if os.path.exists(self.best_save_path):
+
+                    best_weights = torch.load(
+
+                        self.best_save_path,
+
+                        map_location=self.device
+
+                    )
+
+                    self.original_model.load_state_dict(
+
+                        best_weights
+
+                    )
+
+                    self.model.to(
+
+                        self.device
+
+                    )
+
                 self.no_improvement = 0
-
-                self.model.load_state_dict(
-
-                    torch.load(self.best_save_path)
-
-                )
 
             current_lr = new_lr
 
