@@ -1,39 +1,54 @@
 class VotingEngine:
 
     """
-    Majority voting from all engines.
+    Direction-preserving voting layer.
+
+    Currently there is one authoritative AI signal,
+    so the voting engine returns that direction unchanged.
     """
 
-    def vote(
+    def vote(self, signal):
 
-        self,
+        action = getattr(
+            signal,
+            "action",
+            None,
+        )
 
-        signal,
+        if action in {
+            "BUY",
+            "SELL",
+            "HOLD",
+        }:
 
-    ):
+            return action
 
-        votes = [
+        side = getattr(
+            signal,
+            "side",
+            None,
+        )
 
-            signal.ai_direction,
+        if side in {
+            "BUY",
+            "SELL",
+            "HOLD",
+        }:
 
-            signal.smart_money_direction,
+            return side
 
-            signal.orderflow_direction,
+        signal_value = getattr(
+            signal,
+            "signal",
+            None,
+        )
 
-            signal.news_direction,
+        if signal_value in {
+            "BUY",
+            "SELL",
+            "HOLD",
+        }:
 
-        ]
-
-        bullish = votes.count("BUY")
-
-        bearish = votes.count("SELL")
-
-        if bullish > bearish:
-
-            return "BUY"
-
-        if bearish > bullish:
-
-            return "SELL"
+            return signal_value
 
         return "HOLD"

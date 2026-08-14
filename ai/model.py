@@ -173,7 +173,7 @@ class TradingTransformer(nn.Module):
 if __name__ == "__main__":
 
     model = TradingTransformer(
-        input_dim=128,
+        input_dim=11,
         d_model=256,
         heads=8,
         layers=6,
@@ -181,8 +181,8 @@ if __name__ == "__main__":
 
     x = torch.randn(
         4,      # batch
-        200,    # sequence length
-        128,    # features
+        128,    # sequence length
+        11,     # features
     )
 
     outputs = model(x)
@@ -193,14 +193,27 @@ if __name__ == "__main__":
     for key, value in outputs.items():
 
         if isinstance(value, list):
+
             print(
-                f"{key:<20}: {len(value)} attention maps"
+                f"{key:<20}: "
+                f"{len(value)} attention maps"
+            )
+
+        elif torch.is_tensor(value):
+
+            print(
+                f"{key:<20}: "
+                f"{tuple(value.shape)}"
             )
 
         else:
+
             print(
-                f"{key:<20}: {tuple(value.shape)}"
+                f"{key:<20}: "
+                f"{type(value).__name__}"
             )
 
     print("\nParameters:")
-    print(f"{model.num_parameters():,}")
+    print(
+        f"{model.num_parameters():,}"
+    )

@@ -1,20 +1,20 @@
-import pytest
-
-from market.candles import Candle
-from market.orderbook import OrderBook
-from market.trades import Trade
+from models.market import Candle, OrderBook, Trade
 
 
 def test_candle_creation():
 
     candle = Candle(
         symbol="BTCUSDT",
+        interval="5m",
+        open_time=0,
+        close_time=1,
         open=100,
         high=105,
         low=99,
         close=103,
         volume=1000,
-        timestamp=1,
+        trades=1,
+        closed=True,
     )
 
     assert candle.close == 103
@@ -38,9 +38,9 @@ def test_orderbook():
 
     book = OrderBook(
         symbol="BTCUSDT",
+        update_id=1,
         bids=[],
         asks=[],
-        timestamp=1,
     )
 
     assert book.symbol == "BTCUSDT"

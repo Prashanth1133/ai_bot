@@ -10,11 +10,31 @@ class SignalGenerator:
         prediction,
     ) -> Signal:
 
+        if prediction is None:
+            return None
+
         return Signal(
+
             symbol=prediction.symbol,
+
             action=prediction.action,
-            confidence=prediction.confidence,
-            score=prediction.confidence,
+
+            confidence=float(
+                prediction.confidence
+            ),
+
+            score=float(
+                prediction.confidence
+            ),
+
             strategy="AI",
-            features={},
+
+            features=getattr(
+
+                prediction,
+                "features",
+                {}
+
+            ),
+
         )

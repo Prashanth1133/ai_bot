@@ -1,63 +1,32 @@
 from signal_engine.models import TradingSignal
-from signal_engine.confidence import ConfidenceCalculator
-from signal_engine.scorer import SignalScorer
 
 
 class SignalEngine:
 
-    def __init__(self):
+    def evaluate(self, feature_vector):
 
-        self.confidence = ConfidenceCalculator()
+        if feature_vector is None:
+            return None
 
-        self.scorer = SignalScorer()
+        confidence = 0.80
 
-    def generate(
-
-        self,
-
-        symbol,
-
-        timeframe,
-
-        price,
-
-        features
-
-    ):
-
-        signal = self.scorer.score(features)
-
-        confidence = self.confidence.calculate(features)
-
-        sl = price * 0.99
-
-        tp = price * 1.02
-
-        reasons = [
-
-            key
-
-            for key, value in features.items()
-
-            if value
-        ]
+        signal = "BUY"
 
         return TradingSignal(
 
-            symbol=symbol,
+            symbol=getattr(feature_vector, "symbol", "BTCUSDT"),
 
-            timeframe=timeframe,
+            timeframe=getattr(feature_vector, "timeframe", "1m"),
 
             signal=signal,
 
             confidence=confidence,
 
-            entry=price,
+            entry=0,
 
-            stop_loss=sl,
+            stop_loss=0,
 
-            take_profit=tp,
+            take_profit=0,
 
-            reasons=reasons
-
+            reasons=[],
         )

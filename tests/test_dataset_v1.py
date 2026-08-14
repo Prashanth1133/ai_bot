@@ -1,18 +1,5 @@
 from data.build_dataset import DatasetBuilder
 
-builder = DatasetBuilder()
-
-X, y = builder.process(
-
-    "data/raw/BTCUSDT.csv"
-
-)
-
-print(X.shape)
-
-for k, v in y.items():
-
-    print(
-        k,
-        v.shape
-    )
+def test_dataset_labels_align_with_sequences():
+    X, y = DatasetBuilder().process("data/raw/BTCUSDT_15m.csv")
+    assert all(len(values) == len(X) for values in y.values())

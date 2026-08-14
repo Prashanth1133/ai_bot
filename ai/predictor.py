@@ -1,39 +1,34 @@
-import torch
+# ai/predictor.py
 
-from ai.model import TradingModel
-from ai.confidence import ConfidenceEngine
+from ai.models.model_manager import ModelManager
+from ai.models.inference_engine import InferenceEngine
 
 
 class Predictor:
 
-    def __init__(
+
+    def __init__(self):
+
+        self.manager = ModelManager()
+
+        self.model = self.manager.load_latest()
+
+        self.engine = InferenceEngine()
+
+
+
+    def predict(
+
         self,
-        model_path,
-        input_size
+
+        features
+
     ):
 
-        self.model = TradingModel(
-            input_size
-        )
+        result = self.engine.predict(
 
-        self.model.load_state_dict(
-            torch.load(model_path)
-        )
-
-        self.model.eval()
-
-    def predict(self, features):
-
-        tensor = torch.tensor(
             features
-        ).float().unsqueeze(0)
 
-        with torch.no_grad():
-
-            logits = self.model(
-                tensor
-            )
-
-        return ConfidenceEngine.score(
-            logits
         )
+
+        return result

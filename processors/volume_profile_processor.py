@@ -25,7 +25,7 @@ class VolumeProfileProcessor:
 
             return
 
-        candles = self.candles.get(
+        candles = self.candles.history(
 
             candle.symbol,
 

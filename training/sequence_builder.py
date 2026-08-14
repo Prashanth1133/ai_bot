@@ -1,34 +1,33 @@
-from training.window import SlidingWindow
+from collections import deque
+
+import numpy as np
 
 
 class SequenceBuilder:
 
-    def __init__(
+    def __init__(self, window=120):
 
-        self,
+        self.window = window
 
-        window=128,
+        self.buffer = deque(maxlen=window)
 
-    ):
+    def update(self, feature_vector):
 
-        self.window = SlidingWindow(window)
+        self.buffer.append(feature_vector)
 
-    ########################################################
+        if len(self.buffer) < self.window:
+            return None
 
-    def create(
-
-        self,
-
-        features,
-
-        labels,
-
-    ):
-
-        return self.window.build(
-
-            features,
-
-            labels,
-
+        sequence = np.asarray(
+            self.buffer,
+            dtype=np.float32,
         )
+
+        return np.expand_dims(
+            sequence,
+            axis=0,
+        )
+
+    def create(self, features, labels=None):
+
+        return self.update(features)

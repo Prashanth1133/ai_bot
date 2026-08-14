@@ -14,7 +14,7 @@ async def handler(data):
     received.append(data)
 
 
-async def test():
+async def _run():
 
     bus.subscribe("trade", handler)
 
@@ -23,6 +23,6 @@ async def test():
     assert received == [100]
 
 
-asyncio.run(test())
-
-print("PASS")
+def test_event_bus():
+    received.clear()
+    asyncio.run(_run())

@@ -1,6 +1,27 @@
 import numpy as np
 
 
+class ProductionMetrics:
+    """Small stateful metrics collector used by production evaluation."""
+
+    def __init__(self):
+        self.pnl = []
+        self.confidence = []
+
+    def update(self, pnl, confidence):
+        self.pnl.append(float(pnl))
+        self.confidence.append(float(confidence))
+
+    def summary(self):
+        return {
+            "trades": len(self.pnl),
+            "total_pnl": round(sum(self.pnl), 4),
+            "win_rate": ProfitMetrics.win_rate([value > 0 for value in self.pnl]),
+            "average_confidence": round(float(np.mean(self.confidence)), 4)
+            if self.confidence else 0.0,
+        }
+
+
 class ProfitMetrics:
 
 

@@ -1,6 +1,7 @@
-from feature_fusion.fusion_engine import (
-    FeatureFusionEngine
-)
+from app.settings import settings
+from logs.log_manager import pipeline_logger
+
+from feature_fusion.fusion_engine import FeatureFusionEngine
 
 
 class FeatureFusionProcessor:
@@ -13,13 +14,7 @@ class FeatureFusionProcessor:
 
         self.cache = {}
 
-    async def on_update(
-
-        self,
-
-        payload
-
-    ):
+    async def on_update(self, payload):
 
         symbol = payload["symbol"]
 
@@ -30,21 +25,17 @@ class FeatureFusionProcessor:
         modules = payload["modules"]
 
         vector = self.engine.build(
-
             symbol,
-
             timeframe,
-
             timestamp,
-
-            modules
-
+            modules,
         )
 
+        # -------------------------------------------------
+        # Separate topic to prevent collision with the 11-feature model pipeline
+        # -------------------------------------------------
+
         await self.bus.publish(
-
-            "feature_vector",
-
-            vector
-
+            "fused_feature_vector",
+            vector,
         )

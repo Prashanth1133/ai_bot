@@ -1,4 +1,6 @@
-SYMBOLS = [
+DEFAULT_SYMBOL = "btcusdt"
+
+AVAILABLE_SYMBOLS = [
 
     "btcusdt",
 
@@ -8,7 +10,7 @@ SYMBOLS = [
 
     "dogeusdt",
 
-    "xrpusdt"
+    "xrpusdt",
 
 ]
 

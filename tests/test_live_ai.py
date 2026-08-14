@@ -4,25 +4,6 @@ from live.live_ai_engine import (
     LiveAIEngine
 )
 
-x = torch.randn(
-
-    128,
-    11
-
-)
-
-engine = LiveAIEngine(
-
-    "models/btc_v1.pt"
-
-)
-
-print(
-
-    engine.predict(
-
-        x
-
-    )
-
-)
+def test_live_ai_loads_production_model():
+    result = LiveAIEngine("models/Production/best_model.pt").predict(torch.randn(128, 11))
+    assert {"signal", "confidence", "take_profit", "stop_loss"} <= set(result)

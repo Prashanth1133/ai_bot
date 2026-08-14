@@ -1,5 +1,5 @@
 
-from __future__ import annotations
+from decimal import Decimal
 
 from features.registry import Feature
 
@@ -12,7 +12,7 @@ class FeatureEngine:
     features used by the AI pipeline.
     """
 
-    def __init__(self, store):
+    def __init__(self, store=None):
         self.store = store
 
     # =====================================================
@@ -24,6 +24,9 @@ class FeatureEngine:
         symbol,
         metrics,
     ):
+        if self.store is None:
+            return
+
         self.store.update(
             symbol,
             Feature.CVD,
@@ -47,6 +50,49 @@ class FeatureEngine:
             Feature.SELL_VOLUME,
             metrics.sell_volume,
         )
+
+    # =====================================================
+    # Order Book
+    # =====================================================
+
+    def update_orderbook(
+        self,
+        symbol,
+        orderbook,
+    ):
+        if self.store is None or orderbook is None:
+            return
+
+        bid_volume = sum((level.quantity for level in orderbook.bids), Decimal("0"))
+        ask_volume = sum((level.quantity for level in orderbook.asks), Decimal("0"))
+        total_volume = bid_volume + ask_volume
+
+        imbalance = (
+            float((bid_volume - ask_volume) / total_volume)
+            if total_volume > 0
+            else 0.0
+        )
+
+        best_bid = orderbook.bids[0].price if orderbook.bids else None
+        best_ask = orderbook.asks[0].price if orderbook.asks else None
+
+        spread = (
+            float(best_ask - best_bid)
+            if (best_bid is not None and best_ask is not None)
+            else 0.0
+        )
+
+        mid_price = (
+            float((best_bid + best_ask) / Decimal("2"))
+            if (best_bid is not None and best_ask is not None)
+            else 0.0
+        )
+
+        self.store.update(symbol, Feature.BID_VOLUME, float(bid_volume))
+        self.store.update(symbol, Feature.ASK_VOLUME, float(ask_volume))
+        self.store.update(symbol, Feature.IMBALANCE, imbalance)
+        self.store.update(symbol, Feature.SPREAD, spread)
+        self.store.update(symbol, Feature.MID_PRICE, mid_price)
 
     # =====================================================
     # Generic Updates

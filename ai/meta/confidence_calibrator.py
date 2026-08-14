@@ -1,26 +1,20 @@
 class ConfidenceCalibrator:
 
     """
-    Adjusts AI confidence according
-    to recent performance.
+    Preserve raw model confidence.
+
+    Calibration should only be enabled after
+    a validated calibration procedure.
     """
 
     def calibrate(
-
         self,
-
         confidence,
-
         win_rate,
-
     ):
 
-        if win_rate < 0.40:
+        if win_rate is None:
 
-            confidence *= 0.80
+            return float(confidence)
 
-        elif win_rate > 0.70:
-
-            confidence *= 1.10
-
-        return min(confidence, 1.0)
+        return float(confidence)

@@ -1,13 +1,5 @@
-import os
+from pathlib import Path
 
-assert os.path.exists(
 
-    "models/btc_v1.pt"
-
-)
-
-print(
-
-    "Training file exists."
-
-)
+def test_production_training_file_exists():
+    assert Path("models/Production/best_model.pt").is_file()

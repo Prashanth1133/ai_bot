@@ -1,26 +1,22 @@
 class ConfidenceEngine:
 
     """
-    Calculates the final confidence score
-    using weighted probabilities.
+    Preserve the AI model's confidence.
+
+    A separate ensemble should only modify confidence
+    when multiple independently validated models exist.
     """
 
-    def calculate(
+    def calculate(self, signal):
 
-        self,
+        confidence = getattr(
+            signal,
+            "confidence",
+            None,
+        )
 
-        signal,
+        if confidence is None:
 
-    ):
+            return 0.0
 
-        confidence = 0.0
-
-        confidence += signal.ai_probability * 0.40
-
-        confidence += signal.smart_money_score * 0.25
-
-        confidence += signal.orderflow_score * 0.20
-
-        confidence += signal.news_score * 0.15
-
-        return min(confidence, 1.0)
+        return float(confidence)

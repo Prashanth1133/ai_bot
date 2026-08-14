@@ -97,11 +97,19 @@ class ProductionEvaluator:
 
         self,
         predictions,
-        labels,
-        confidence
+        labels=None,
+        confidence=None,
 
     ):
 
+
+        # Support historical report dictionaries while retaining the explicit
+        # prediction/label API used by the production evaluator.
+        if isinstance(predictions, dict) and labels is None and confidence is None:
+            return dict(predictions)
+
+        if labels is None or confidence is None:
+            raise ValueError("labels and confidence are required for prediction evaluation")
 
         return {
 

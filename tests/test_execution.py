@@ -1,3 +1,5 @@
+import asyncio
+
 from execution.execution_engine import ExecutionEngine
 
 from models.order import Order,OrderSide,OrderType
@@ -5,7 +7,11 @@ from models.order import Order,OrderSide,OrderType
 
 def test_execution():
 
-    engine=ExecutionEngine()
+    class Executor:
+        async def execute(self, context):
+            return context
+
+    engine=ExecutionEngine(Executor())
 
     order=Order(
 
@@ -21,6 +27,10 @@ def test_execution():
 
     )
 
-    result=engine.execute(order)
+    # This legacy unit test only verifies delegation; the modern engine takes
+    # an execution context, so use the order's compatible public fields.
+    from types import SimpleNamespace
+    context = SimpleNamespace(symbol=order.symbol, side=order.side, quantity=order.quantity, price=None)
+    result=asyncio.run(engine.execute(context))
 
     assert result is not None

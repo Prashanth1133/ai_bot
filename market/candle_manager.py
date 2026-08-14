@@ -19,42 +19,53 @@ class CandleManager:
 
             self.windows[symbol][interval] = RollingWindow()
 
-        if candle.closed:
+        if not candle.closed:
+            return
 
-            self.windows[symbol][interval].add(candle)
+        window = self.windows[symbol][interval]
+
+        # -------------------------------------------------
+        # Prevent duplicate closed candles
+        # -------------------------------------------------
+
+        try:
+
+            latest = window.latest()
+
+            if (
+                latest is not None
+                and latest.close_time >= candle.close_time
+            ):
+                return
+
+        except Exception:
+            pass
+
+        window.add(candle)
 
     def latest(
-
         self,
-
         symbol,
-
         interval
-
     ):
-
+        if interval not in self.windows[symbol]:
+            return None
         return self.windows[symbol][interval].latest()
 
     def previous(
-
         self,
-
         symbol,
-
         interval
-
     ):
-
+        if interval not in self.windows[symbol]:
+            return None
         return self.windows[symbol][interval].previous()
 
     def history(
-
         self,
-
         symbol,
-
         interval
-
     ):
-
+        if interval not in self.windows[symbol]:
+            return []
         return self.windows[symbol][interval].all()

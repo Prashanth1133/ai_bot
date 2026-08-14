@@ -1,24 +1,14 @@
 import numpy as np
 
-from features.engine import FeatureEngine
+from features.feature_builder import FeatureBuilder
+from models.market import Candle
+from decimal import Decimal
 
 
 def test_feature_engine():
 
-    engine=FeatureEngine()
-
-    candles={
-
-        "close":np.arange(500),
-
-        "high":np.arange(500),
-
-        "low":np.arange(500),
-
-        "volume":np.random.rand(500),
-
-    }
-
-    features=engine.process(candles)
-
-    assert features is not None
+    candles = [Candle("BTCUSDT", "5m", i, i + 1, Decimal(i + 1),
+                      Decimal(i + 2), Decimal(i), Decimal(i + 1),
+                      Decimal("1"), 1, True) for i in range(21)]
+    features=FeatureBuilder.build_training_compatible(candles)
+    assert features.shape == (11,)

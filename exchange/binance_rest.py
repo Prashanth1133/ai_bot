@@ -81,3 +81,30 @@ class BinanceREST:
                 "limit": limit,
             },
         )
+
+
+class BinanceRestClient:
+
+    def __init__(
+        self,
+        api_key: str = "",
+        api_secret: str = "",
+        testnet: bool = False,
+    ):
+        if not api_key:
+            from core.rest_client import BinanceREST as PublicREST
+            self._impl = PublicREST()
+        else:
+            self._impl = BinanceREST(api_key, api_secret, testnet)
+
+    async def klines(
+        self,
+        symbol: str,
+        interval: str,
+        limit: int = 500,
+    ):
+        return await self._impl.klines(
+            symbol=symbol,
+            interval=interval,
+            limit=limit,
+        )

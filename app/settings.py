@@ -39,10 +39,14 @@ class Settings(BaseSettings):
     # ==================================================
 
     DEFAULT_SYMBOL: str = "BTCUSDT"
+    ACTIVE_SYMBOL: str = "BTCUSDT"
     DEFAULT_TIMEFRAME: str = "5m"
+
+    HISTORICAL_WARMUP_CANDLES: int = 150
 
     PAPER_TRADING: bool = True
     ENABLE_LIVE_TRADING: bool = False
+    PAPER_JOURNAL_PATH: str = "logs/paper_trades.jsonl"
 
     # ==================================================
     # Risk Management
@@ -118,7 +122,11 @@ class Settings(BaseSettings):
     # AI
     # ==================================================
 
-    MODEL_PATH: str = "models/checkpoints/latest.pt"
+    # The production Transformer is the only model used by the live pipeline.
+    MODEL_PATH: str = "models/Production/best_model.pt"
+    MODEL_INPUT_DIM: int = 11
+    MODEL_SEQUENCE_LENGTH: int = 128
+    MODEL_TIMEFRAME: str = "5m"
 
     DEVICE: str = "cpu"
 
