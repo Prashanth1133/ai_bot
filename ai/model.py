@@ -15,19 +15,23 @@ class TradingTransformer(nn.Module):
     Institutional Multi-Task Transformer Model
 
     Outputs:
+        - direction (3 classes: SELL=0, HOLD=1, BUY=2)
         - signal_logits
-        - confidence
-        - expected_move
-        - volatility
+        - reversal
+        - return_15m
+        - return_1h
+        - return_4h
+        - max_return_1h
+        - min_return_1h
         - take_profit
         - stop_loss
-        - position_size
         - attention
+        - embedding
     """
 
     def __init__(
         self,
-        input_dim: int,
+        input_dim: int = 48,
         d_model: int = 256,
         heads: int = 8,
         layers: int = 6,
@@ -141,10 +145,11 @@ class TradingTransformer(nn.Module):
 
         outputs = self.forward(x)
 
-        if "signal_logits" in outputs:
+        logits = outputs.get("signal_logits", outputs.get("direction"))
+        if logits is not None:
 
             probs = torch.softmax(
-                outputs["signal_logits"],
+                logits,
                 dim=-1,
             )
 
@@ -173,16 +178,17 @@ class TradingTransformer(nn.Module):
 if __name__ == "__main__":
 
     model = TradingTransformer(
-        input_dim=11,
+        input_dim=400,
         d_model=256,
         heads=8,
         layers=6,
+        dropout=0.10,
     )
 
     x = torch.randn(
         4,      # batch
         128,    # sequence length
-        11,     # features
+        400,    # features
     )
 
     outputs = model(x)
@@ -216,4 +222,4 @@ if __name__ == "__main__":
     print("\nParameters:")
     print(
         f"{model.num_parameters():,}"
-    )
+    )

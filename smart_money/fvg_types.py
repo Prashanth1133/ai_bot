@@ -5,6 +5,9 @@ from decimal import Decimal
 from enum import Enum
 
 
+from typing import Any
+
+
 class FVGType(Enum):
 
     BULLISH = "bullish"
@@ -39,3 +42,7 @@ class FairValueGap:
     strength: float
 
     status: FVGStatus = FVGStatus.OPEN
+
+    open_time: int | None = None
+
+    candle: Any = None

@@ -152,28 +152,35 @@ class InferenceEngine:
             )
 
         reversal = False
+        reversal_prob = 0.0
 
         if "reversal" in outputs:
-
-            reversal_prediction = torch.argmax(
-                outputs["reversal"],
-                dim=-1,
-            )
-
-            reversal = bool(
-                reversal_prediction[0].item()
-            )
+            rev_tensor = outputs["reversal"]
+            if rev_tensor.shape[-1] == 1:
+                reversal_prob = float(torch.sigmoid(rev_tensor).squeeze().item())
+                reversal = reversal_prob >= 0.5
+            else:
+                reversal_prediction = torch.argmax(rev_tensor, dim=-1)
+                reversal = bool(reversal_prediction[0].item())
 
         market_regime = 0
-
         if "market_regime" in outputs:
-
             market_regime = int(
                 torch.argmax(
                     outputs["market_regime"],
                     dim=-1,
                 )[0].item()
             )
+
+        # Multi-horizon and risk scalars
+        ret_15m = scalar_output("return_15m", 0.0)
+        ret_1h = scalar_output("return_1h", 0.0)
+        ret_4h = scalar_output("return_4h", 0.0)
+        max_ret_1h = scalar_output("max_return_1h", 0.0)
+        min_ret_1h = scalar_output("min_return_1h", 0.0)
+        tp = scalar_output("take_profit", 0.0)
+        sl = scalar_output("stop_loss", 0.0)
+        vol = scalar_output("volatility", 0.0)
 
         # ======================================================
         # LOG
@@ -185,7 +192,8 @@ class InferenceEngine:
             f"Confidence={confidence_value:.4f} "
             f"SELL={probability_sell:.4f} "
             f"HOLD={probability_hold:.4f} "
-            f"BUY={probability_buy:.4f}"
+            f"BUY={probability_buy:.4f} "
+            f"TP={tp:.4f} SL={sl:.4f}"
         )
 
         # ======================================================
@@ -193,30 +201,20 @@ class InferenceEngine:
         # ======================================================
 
         return {
-
             "signal": signal,
-
             "confidence": confidence_value,
-
             "probability_sell": probability_sell,
-
             "probability_hold": probability_hold,
-
             "probability_buy": probability_buy,
-
             "reversal": reversal,
-
-            "volatility": scalar_output(
-                "volatility"
-            ),
-
-            "take_profit": scalar_output(
-                "take_profit"
-            ),
-
-            "stop_loss": scalar_output(
-                "stop_loss"
-            ),
-
+            "reversal_probability": reversal_prob,
+            "return_15m": ret_15m,
+            "return_1h": ret_1h,
+            "return_4h": ret_4h,
+            "max_return_1h": max_ret_1h,
+            "min_return_1h": min_ret_1h,
+            "volatility": vol,
+            "take_profit": tp,
+            "stop_loss": sl,
             "market_regime": market_regime,
         }

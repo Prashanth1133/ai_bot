@@ -18,9 +18,11 @@ class FeatureStore:
 
     def get(
         self,
-        symbol
+        symbol,
+        feature=None
     ):
-
+        if feature is not None:
+            return self.features[symbol].get(feature)
         return self.features[symbol]
 
     def get_all(

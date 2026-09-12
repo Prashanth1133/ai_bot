@@ -44,7 +44,11 @@ class FairValueGapDetector:
 
                     strength=float(
                         last.low - first.high
-                    )
+                    ),
+
+                    open_time=getattr(last, "open_time", None),
+
+                    candle=last,
 
                 )
 
@@ -69,7 +73,11 @@ class FairValueGapDetector:
 
                     strength=float(
                         first.low - last.high
-                    )
+                    ),
+
+                    open_time=getattr(last, "open_time", None),
+
+                    candle=last,
 
                 )
 

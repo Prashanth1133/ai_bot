@@ -90,6 +90,34 @@ class OrderFlowEngine:
 
         return metrics
 
+    def process_candle(self, candle) -> OrderFlowMetrics:
+        """
+        Process a completed candle into orderflow metrics.
+        """
+        symbol = getattr(candle, "symbol", "BTCUSDT")
+        self._ensure_symbol(symbol)
+        metrics = self.metrics[symbol]
+
+        vol = Decimal(str(getattr(candle, "volume", 0.0)))
+        c = Decimal(str(getattr(candle, "close", 0.0)))
+        o = Decimal(str(getattr(candle, "open", 0.0)))
+        h = Decimal(str(getattr(candle, "high", 0.0)))
+        l = Decimal(str(getattr(candle, "low", 0.0)))
+        
+        rng = h - l
+        buy_ratio = Decimal("0.5") if rng <= 0 else max(Decimal("0.0"), min(Decimal("1.0"), (c - l) / rng))
+        buy_vol = vol * buy_ratio
+        sell_vol = vol - buy_vol
+        delta = buy_vol - sell_vol
+
+        metrics.trades += int(getattr(candle, "trades", 100))
+        metrics.buy_volume += buy_vol
+        metrics.sell_volume += sell_vol
+        metrics.delta = delta
+        metrics.cvd += delta
+
+        return metrics
+
     def get_metrics(self, symbol: str) -> OrderFlowMetrics:
         """
         Return current metrics for a symbol.

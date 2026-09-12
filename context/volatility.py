@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from decimal import Decimal
 
 
@@ -5,14 +7,21 @@ class VolatilityAnalyzer:
 
     def analyze(self, atr, price):
 
-        ratio = atr / price
+        if not price or float(price) <= 0.0:
+            return "LOW"
 
-        if ratio > Decimal("0.015"):
+        if not atr or float(atr) <= 0.0:
+            return "LOW"
 
-            return "HIGH"
+        try:
+            ratio = Decimal(str(atr)) / Decimal(str(price))
 
-        if ratio > Decimal("0.007"):
+            if ratio > Decimal("0.015"):
+                return "HIGH"
 
-            return "MEDIUM"
+            if ratio > Decimal("0.007"):
+                return "MEDIUM"
 
-        return "LOW"
+            return "LOW"
+        except Exception:
+            return "LOW"

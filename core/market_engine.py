@@ -148,6 +148,25 @@ class MarketEngine:
             self.feature_fusion.on_update
         )
 
+        from processors.unified_pipeline_processor import UnifiedPipelineProcessor
+
+        self.unified_pipeline = UnifiedPipelineProcessor(
+            self.bus,
+            self.candles,
+            self.orderflow,
+            self.features,
+        )
+
+        self.bus.subscribe(
+            "candle",
+            self.unified_pipeline.on_candle
+        )
+
+        self.bus.subscribe(
+            "fused_feature_sequence",
+            self.signal_processor.on_features
+        )
+
         self.bus.subscribe(
             "feature_vector",
             self.sequence.on_feature_vector
@@ -512,6 +531,18 @@ class MarketEngine:
             timeframe,
             vectors,
         )
+
+        for tf in ["1m", "5m", "15m", "1h", "4h"]:
+            try:
+                tf_candles = await asyncio.to_thread(
+                    self.historical.fetch_klines,
+                    symbol,
+                    tf,
+                    100,
+                )
+                self.unified_pipeline.mtf_manager.update_history(symbol, tf, tf_candles)
+            except Exception as e:
+                logger.warning(f"[MTF WARMUP] Failed for {symbol} {tf}: {e}")
 
         logger.success(
             f"[WARMUP COMPLETE] "

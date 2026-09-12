@@ -8,7 +8,7 @@ class ModelConfig:
 
     sequence_length: int = 120
 
-    feature_dimension: int = 128
+    feature_dimension: int = 48
 
     symbol_embedding_size: int = 16
 

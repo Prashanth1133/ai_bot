@@ -8,86 +8,77 @@ from decimal import Decimal
 class SwingPoint:
 
     price: Decimal
-
     candle: object
-
     is_high: bool
 
 
 class AdaptiveSwingDetector:
 
-    """
-    ATR-based adaptive swing detector.
-    """
-
-    def __init__(self):
-
-        self.last_high = {}
-
-        self.last_low = {}
+    def __init__(
+        self,
+        multiplier: float = 1.5,
+    ):
+        self.multiplier = float(
+            multiplier
+        )
 
     def detect(
-
         self,
-
         candles,
-
-        atr
-
+        atr,
     ):
 
-        if atr is None:
-
+        if atr is None or not candles:
             return []
 
-        symbol = candles[-1].symbol
+        threshold = (
+            Decimal(str(float(atr)))
+            * Decimal(str(self.multiplier))
+        )
 
-        if symbol not in self.last_high:
-
-            self.last_high[symbol] = candles[0].high
-
-            self.last_low[symbol] = candles[0].low
+        if threshold <= 0:
+            return []
 
         swings = []
 
-        threshold = atr * Decimal("1.5")
+        last_high = candles[0].high
+        last_low = candles[0].low
 
-        for candle in candles:
+        for candle in candles[1:]:
 
-            if candle.high - self.last_high[symbol] > threshold:
+            high_move = (
+                candle.high - last_high
+            )
 
-                self.last_high[symbol] = candle.high
+            low_move = (
+                last_low - candle.low
+            )
+
+            if high_move > threshold:
+
+                last_high = candle.high
 
                 swings.append(
-
                     SwingPoint(
-
-                        candle=candle,
-
                         price=candle.high,
-
-                        is_high=True
-
+                        candle=candle,
+                        is_high=True,
                     )
-
                 )
 
-            if self.last_low[symbol] - candle.low > threshold:
+            if low_move > threshold:
 
-                self.last_low[symbol] = candle.low
+                last_low = candle.low
 
                 swings.append(
-
                     SwingPoint(
-
-                        candle=candle,
-
                         price=candle.low,
-
-                        is_high=False
-
+                        candle=candle,
+                        is_high=False,
                     )
-
                 )
 
         return swings
+
+    def reset(self):
+        pass

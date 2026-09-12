@@ -50,7 +50,8 @@ class OrderBlockDetector:
 
         )
 
-        if body < atr * self.multiplier:
+        atr_dec = Decimal(str(atr))
+        if body < atr_dec * self.multiplier:
 
             return detected
 

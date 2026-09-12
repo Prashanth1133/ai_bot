@@ -9,48 +9,113 @@ class RSI:
     """
 
     def __init__(self, period: int = 14):
-        self.period = period
+        self.period = int(period)
 
     def calculate(self, close):
+        close = np.asarray(
+            close,
+            dtype=np.float64,
+        )
 
-        close = np.asarray(close, dtype=float)
+        n = len(close)
 
-        if len(close) < self.period + 1:
-            return np.full(len(close), np.nan)
+        if n == 0:
+            return np.array(
+                [],
+                dtype=np.float64,
+            )
+
+        if n < self.period + 1:
+            return np.full(
+                n,
+                50.0,
+                dtype=np.float64,
+            )
 
         delta = np.diff(close)
 
-        gain = np.where(delta > 0, delta, 0.0)
-        loss = np.where(delta < 0, -delta, 0.0)
-
-        avg_gain = np.zeros(len(close))
-        avg_loss = np.zeros(len(close))
-
-        avg_gain[self.period] = np.mean(gain[: self.period])
-        avg_loss[self.period] = np.mean(loss[: self.period])
-
-        for i in range(self.period + 1, len(close)):
-            avg_gain[i] = (
-                avg_gain[i - 1] * (self.period - 1)
-                + gain[i - 1]
-            ) / self.period
-
-            avg_loss[i] = (
-                avg_loss[i - 1] * (self.period - 1)
-                + loss[i - 1]
-            ) / self.period
-
-        rs = np.divide(
-            avg_gain,
-            avg_loss,
-            out=np.zeros_like(avg_gain),
-            where=avg_loss != 0,
+        gains = np.maximum(
+            delta,
+            0.0,
         )
 
-        rsi = 100.0 - (100.0 / (1.0 + rs))
-        rsi[: self.period] = np.nan
+        losses = np.maximum(
+            -delta,
+            0.0,
+        )
+
+        avg_gain = np.zeros(
+            n,
+            dtype=np.float64,
+        )
+
+        avg_loss = np.zeros(
+            n,
+            dtype=np.float64,
+        )
+
+        rsi = np.full(
+            n,
+            50.0,
+            dtype=np.float64,
+        )
+
+        p = self.period
+
+        avg_gain[p] = np.mean(
+            gains[:p]
+        )
+
+        avg_loss[p] = np.mean(
+            losses[:p]
+        )
+
+        for i in range(
+            p + 1,
+            n,
+        ):
+            avg_gain[i] = (
+                (
+                    avg_gain[i - 1]
+                    * (p - 1)
+                )
+                + gains[i - 1]
+            ) / p
+
+            avg_loss[i] = (
+                (
+                    avg_loss[i - 1]
+                    * (p - 1)
+                )
+                + losses[i - 1]
+            ) / p
+
+        valid = avg_loss > 0
+
+        rs = np.zeros_like(
+            avg_loss
+        )
+
+        rs[valid] = (
+            avg_gain[valid]
+            / avg_loss[valid]
+        )
+
+        rsi[valid] = (
+            100.0
+            - (
+                100.0
+                / (1.0 + rs[valid])
+            )
+        )
+
+        rsi[
+            (avg_loss == 0)
+            & (avg_gain > 0)
+        ] = 100.0
 
         return rsi
 
     def latest(self, close):
-        return self.calculate(close)[-1]
+        calc = self.calculate(close)
+        return float(calc[-1]) if len(calc) > 0 else 50.0

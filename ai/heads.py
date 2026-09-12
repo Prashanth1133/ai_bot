@@ -5,148 +5,80 @@ class MultiTaskHeads(nn.Module):
 
     def __init__(
         self,
-        d_model
+        d_model: int = 256
     ):
-
         super().__init__()
 
+        # Direction classification (3 classes: SELL=0, HOLD=1, BUY=2)
         self.direction = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
+            nn.Linear(d_model, 64),
             nn.ReLU(),
-
-            nn.Linear(
-                64,
-                3
-            )
-
+            nn.Linear(64, 3)
         )
 
-        self.confidence = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
-            nn.ReLU(),
-
-            nn.Linear(
-                64,
-                1
-            ),
-
-            nn.Sigmoid()
-
-        )
-
+        # Reversal classification (binary logit)
         self.reversal = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
+            nn.Linear(d_model, 64),
             nn.ReLU(),
-
-            nn.Linear(
-                64,
-                2
-            )
-
+            nn.Linear(64, 1)
         )
 
-        self.volatility = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
+        # Multi-horizon return regression heads
+        self.return_15m = nn.Sequential(
+            nn.Linear(d_model, 64),
             nn.ReLU(),
-
-            nn.Linear(
-                64,
-                1
-            )
-
+            nn.Linear(64, 1)
         )
 
+        self.return_1h = nn.Sequential(
+            nn.Linear(d_model, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+
+        self.return_4h = nn.Sequential(
+            nn.Linear(d_model, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+
+        # Future excursion regression heads
+        self.max_return_1h = nn.Sequential(
+            nn.Linear(d_model, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+
+        self.min_return_1h = nn.Sequential(
+            nn.Linear(d_model, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+
+        # Risk-management targets
         self.take_profit = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
+            nn.Linear(d_model, 64),
             nn.ReLU(),
-
-            nn.Linear(
-                64,
-                1
-            )
-
+            nn.Linear(64, 1)
         )
 
         self.stop_loss = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
+            nn.Linear(d_model, 64),
             nn.ReLU(),
-
-            nn.Linear(
-                64,
-                1
-            )
-
-        )
-
-        self.market_regime = nn.Sequential(
-
-            nn.Linear(
-                d_model,
-                64
-            ),
-
-            nn.ReLU(),
-
-            nn.Linear(
-                64,
-                10
-            )
-
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
-
+        direction_logits = self.direction(x)
         return {
-
-            "direction":
-                self.direction(x),
-
-            "confidence":
-                self.confidence(x),
-
-            "reversal":
-                self.reversal(x),
-
-            "volatility":
-                self.volatility(x),
-
-            "take_profit":
-                self.take_profit(x),
-
-            "stop_loss":
-                self.stop_loss(x),
-
-            "market_regime":
-                self.market_regime(x)
-
-        }
+            "direction": direction_logits,
+            "signal_logits": direction_logits,  # Alias for backward compatibility
+            "reversal": self.reversal(x),
+            "return_15m": self.return_15m(x),
+            "return_1h": self.return_1h(x),
+            "return_4h": self.return_4h(x),
+            "max_return_1h": self.max_return_1h(x),
+            "min_return_1h": self.min_return_1h(x),
+            "take_profit": self.take_profit(x),
+            "stop_loss": self.stop_loss(x),
+        }

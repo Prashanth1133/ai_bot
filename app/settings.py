@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 from typing import List
 
@@ -122,9 +121,9 @@ class Settings(BaseSettings):
     # AI
     # ==================================================
 
-    # The production Transformer is the only model used by the live pipeline.
-    MODEL_PATH: str = "models/Production/best_model.pt"
-    MODEL_INPUT_DIM: int = 11
+    # The production Transformer is the primary model used by the live pipeline.
+    MODEL_PATH: str = "models/Production/BTCUSDT/final_v1/best_model.pt"
+    MODEL_INPUT_DIM: int = 400
     MODEL_SEQUENCE_LENGTH: int = 128
     MODEL_TIMEFRAME: str = "5m"
 
@@ -203,4 +202,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
